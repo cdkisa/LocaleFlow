@@ -354,6 +354,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Project member endpoints
+  app.get("/api/projects/:id/members", isAuthenticated, async (req, res) => {
+    try {
+      const members = await storage.getProjectMembers(req.params.id);
+      
+      // Fetch user details for each member
+      const membersWithDetails = await Promise.all(
+        members.map(async (member) => {
+          const user = await storage.getUser(member.userId);
+          return {
+            ...member,
+            user: user ? {
+              id: user.id,
+              email: user.email,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              profileImageUrl: user.profileImageUrl,
+            } : null,
+          };
+        })
+      );
+      
+      res.json(membersWithDetails);
+    } catch (error) {
+      console.error("Error fetching members:", error);
+      res.status(500).json({ message: "Failed to fetch project members" });
+    }
+  });
+
+  app.post("/api/projects/:id/members", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      
+      // Check if user is owner
+      const project = await storage.getProject(projectId);
+      if (!project || project.ownerId !== userId) {
+        return res.status(403).json({ 
+          message: "Only project owners can add members" 
+        });
+      }
+      
+      // For simplicity, we'll use the email as userId for this MVP
+      // In production, you'd look up the user by email first
+      const { email, role } = req.body;
+      
+      if (!email || !role) {
+        return res.status(400).json({ message: "Email and role are required" });
+      }
+      
+      const validatedData = insertProjectMemberSchema.parse({
+        userId: email, // Using email as userId for MVP
+        role,
+        projectId,
+      });
+      
+      const member = await storage.addMemberToProject(validatedData);
+      res.json(member);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Error adding member:", error);
+      res.status(500).json({ message: "Failed to add member" });
+    }
+  });
+
+  app.delete("/api/projects/:id/members/:memberId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      
+      // Check if user is owner
+      const project = await storage.getProject(projectId);
+      if (!project || project.ownerId !== userId) {
+        return res.status(403).json({ 
+          message: "Only project owners can remove members" 
+        });
+      }
+      
+      await storage.removeMemberFromProject(req.params.memberId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing member:", error);
+      res.status(500).json({ message: "Failed to remove member" });
+    }
+  });
+
   // AI Translation suggestion endpoint
   app.post("/api/translate/suggest", isAuthenticated, async (req, res) => {
     try {

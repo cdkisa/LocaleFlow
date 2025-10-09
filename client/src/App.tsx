@@ -17,6 +17,7 @@ import TranslationEditor from "@/pages/translation-editor";
 import NewKey from "@/pages/new-key";
 import ImportTranslations from "@/pages/import-translations";
 import ExportTranslations from "@/pages/export-translations";
+import ProjectSettings from "@/pages/project-settings";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -35,6 +36,7 @@ function Router() {
           <Route path="/projects/:id/keys/new" component={NewKey} />
           <Route path="/projects/:id/import" component={ImportTranslations} />
           <Route path="/projects/:id/export" component={ExportTranslations} />
+          <Route path="/projects/:id/settings" component={ProjectSettings} />
         </>
       )}
       <Route component={NotFound} />
