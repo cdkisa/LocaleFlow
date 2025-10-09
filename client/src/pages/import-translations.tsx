@@ -21,8 +21,8 @@ export default function ImportTranslations() {
   const [dragActive, setDragActive] = useState(false);
 
   const importMutation = useMutation({
-    mutationFn: async (formData: FormData) => {
-      return await apiRequest("POST", `/api/projects/${id}/import`, formData);
+    mutationFn: async ({ format, data }: { format: string; data: any }) => {
+      return await apiRequest("POST", `/api/projects/${id}/import`, { format, data });
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
@@ -78,7 +78,7 @@ export default function ImportTranslations() {
     }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!file) {
       toast({
         title: "Error",
@@ -88,11 +88,28 @@ export default function ImportTranslations() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("format", format);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target?.result as string;
+        let data;
+        
+        if (format === "json") {
+          data = JSON.parse(content);
+        } else {
+          data = content;
+        }
 
-    importMutation.mutate(formData);
+        importMutation.mutate({ format, data });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to read file content",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (

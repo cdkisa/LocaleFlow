@@ -8,8 +8,10 @@ import {
   insertTranslationKeySchema,
   insertTranslationSchema,
   insertProjectMemberSchema,
+  type Translation,
 } from "@shared/schema";
 import { z } from "zod";
+import Papa from "papaparse";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -300,8 +302,215 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Import endpoint
   app.post("/api/projects/:id/import", isAuthenticated, async (req: any, res) => {
     try {
-      // For MVP, return success with placeholder count
-      res.json({ imported: 0, message: "Import functionality will be implemented" });
+      // Validate request body
+      const importSchema = z.object({
+        format: z.enum(["json", "csv"]),
+        data: z.union([z.record(z.record(z.string())), z.string()]),
+      });
+
+      const validated = importSchema.safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ 
+          message: "Invalid import data", 
+          errors: validated.error.errors 
+        });
+      }
+
+      const { format, data } = validated.data;
+      const projectId = req.params.id;
+      const userId = req.user.claims.sub;
+      
+      let importedCount = 0;
+      const errors: string[] = [];
+      const warnings: string[] = [];
+      
+      // Pre-load project data into maps for O(1) lookups
+      const languages = await storage.getProjectLanguages(projectId);
+      const languageMap = new Map(languages.map(l => [l.languageCode, l.id]));
+      
+      const existingKeys = await storage.getProjectKeys(projectId);
+      const keyMap = new Map(existingKeys.map(k => [k.key, k]));
+      
+      const existingTranslations = await storage.getProjectTranslations(projectId);
+      const translationMap = new Map(
+        existingTranslations.map(t => [`${t.keyId}:${t.languageId}`, t])
+      );
+
+      if (format === "json") {
+        // Validate JSON structure
+        if (typeof data !== "object" || Array.isArray(data)) {
+          return res.status(400).json({ 
+            message: "Invalid JSON format. Expected nested object: { \"en\": { \"key\": \"value\" } }" 
+          });
+        }
+
+        // Process nested JSON format: { "en": { "key1": "value1" }, "fr": { "key1": "valeur1" } }
+        for (const [langCode, translations] of Object.entries(data as Record<string, Record<string, string>>)) {
+          const languageId = languageMap.get(langCode);
+          if (!languageId) {
+            warnings.push(`Unknown language code '${langCode}' - skipped all translations for this language`);
+            continue;
+          }
+
+          if (typeof translations !== "object" || Array.isArray(translations)) {
+            errors.push(`Invalid translations for language '${langCode}'. Expected object with key-value pairs`);
+            continue;
+          }
+
+          for (const [key, value] of Object.entries(translations)) {
+            if (typeof value !== "string") {
+              warnings.push(`Non-string value for key '${key}' in language '${langCode}' - skipped`);
+              continue;
+            }
+
+            try {
+              // Get or create translation key
+              let translationKey = keyMap.get(key);
+              if (!translationKey) {
+                translationKey = await storage.createTranslationKey({
+                  projectId,
+                  key,
+                  description: null,
+                });
+                keyMap.set(key, translationKey);
+              }
+
+              // Create or update translation
+              const lookupKey = `${translationKey.id}:${languageId}`;
+              const existingTranslation = translationMap.get(lookupKey);
+
+              if (existingTranslation) {
+                await storage.updateTranslation(existingTranslation.id, {
+                  value,
+                  status: "draft",
+                });
+              } else {
+                const newTranslation = await storage.createTranslation({
+                  keyId: translationKey.id,
+                  languageId,
+                  value,
+                  status: "draft",
+                  translatedBy: userId,
+                });
+                translationMap.set(lookupKey, newTranslation);
+              }
+              importedCount++;
+            } catch (err) {
+              errors.push(`Failed to import '${key}' for '${langCode}': ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
+        }
+      } else if (format === "csv") {
+        // Parse CSV with proper quote/comma handling
+        const csvData = typeof data === "string" ? data : String(data);
+        const parsed = Papa.parse<{ key: string; language_code: string; value: string; status?: string }>(csvData, {
+          header: true,
+          skipEmptyLines: true,
+        });
+
+        if (parsed.errors.length > 0) {
+          return res.status(400).json({ 
+            message: "CSV parsing failed", 
+            errors: parsed.errors 
+          });
+        }
+
+        // Validate CSV headers using metadata
+        const requiredHeaders = ["key", "language_code", "value"];
+        const headers = parsed.meta.fields || [];
+        const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+        if (missingHeaders.length > 0) {
+          return res.status(400).json({ 
+            message: `Missing required CSV headers: ${missingHeaders.join(", ")}. Expected: ${requiredHeaders.join(", ")}` 
+          });
+        }
+
+        // Handle empty CSV (header only)
+        if (parsed.data.length === 0) {
+          return res.json({ 
+            imported: 0,
+            message: 'No data rows to import (CSV contains only headers)'
+          });
+        }
+
+        // Process CSV rows
+        for (let i = 0; i < parsed.data.length; i++) {
+          const row = parsed.data[i];
+          const rowNum = i + 2; // +2 for header row and 0-index
+
+          if (!row.key || !row.language_code || row.value === undefined) {
+            errors.push(`Row ${rowNum}: Missing required fields (key, language_code, or value)`);
+            continue;
+          }
+
+          const languageId = languageMap.get(row.language_code);
+          if (!languageId) {
+            warnings.push(`Row ${rowNum}: Unknown language code '${row.language_code}' - skipped`);
+            continue;
+          }
+
+          // Validate status
+          const validStatuses = ["draft", "in_review", "approved"];
+          const status = row.status && validStatuses.includes(row.status) ? row.status : "draft";
+          if (row.status && !validStatuses.includes(row.status)) {
+            warnings.push(`Row ${rowNum}: Invalid status '${row.status}' - defaulted to 'draft'`);
+          }
+
+          try {
+            // Get or create translation key
+            let translationKey = keyMap.get(row.key);
+            if (!translationKey) {
+              translationKey = await storage.createTranslationKey({
+                projectId,
+                key: row.key,
+                description: null,
+              });
+              keyMap.set(row.key, translationKey);
+            }
+
+            // Create or update translation
+            const lookupKey = `${translationKey.id}:${languageId}`;
+            const existingTranslation = translationMap.get(lookupKey);
+
+            if (existingTranslation) {
+              await storage.updateTranslation(existingTranslation.id, {
+                value: row.value,
+                status: status as "draft" | "in_review" | "approved",
+              });
+            } else {
+              const newTranslation = await storage.createTranslation({
+                keyId: translationKey.id,
+                languageId,
+                value: row.value,
+                status: status as "draft" | "in_review" | "approved",
+                translatedBy: userId,
+              });
+              translationMap.set(lookupKey, newTranslation);
+            }
+            importedCount++;
+          } catch (err) {
+            errors.push(`Row ${rowNum}: Failed to import - ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+
+      // Return response with errors and warnings
+      if (errors.length > 0) {
+        return res.status(400).json({ 
+          imported: importedCount,
+          errors,
+          warnings: warnings.length > 0 ? warnings : undefined,
+          message: `Import completed with ${errors.length} error(s) and ${importedCount} successful import(s)`
+        });
+      }
+
+      res.json({ 
+        imported: importedCount,
+        warnings: warnings.length > 0 ? warnings : undefined,
+        message: importedCount > 0 
+          ? `Successfully imported ${importedCount} translation(s)${warnings.length > 0 ? ` with ${warnings.length} warning(s)` : ''}`
+          : 'No translations were imported'
+      });
     } catch (error) {
       console.error("Error importing:", error);
       res.status(500).json({ message: "Failed to import translations" });
@@ -311,16 +520,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export endpoint
   app.get("/api/projects/:id/export", isAuthenticated, async (req, res) => {
     try {
-      const { format, languages } = req.query;
+      const { format, languages: languageFilter } = req.query;
+      const projectId = req.params.id;
+
+      const keys = await storage.getProjectKeys(projectId);
+      const translations = await storage.getProjectTranslations(projectId);
+      const languages = await storage.getProjectLanguages(projectId);
+
+      const selectedLanguages = languageFilter 
+        ? languages.filter(l => (languageFilter as string).split(",").includes(l.id))
+        : languages;
 
       if (format === "json") {
+        // Nested JSON format: { "en": { "key1": "value1" }, "fr": { "key1": "valeur1" } }
+        const result: Record<string, Record<string, string>> = {};
+        
+        selectedLanguages.forEach(lang => {
+          result[lang.languageCode] = {};
+          keys.forEach(key => {
+            const translation = translations.find(
+              (t: Translation) => t.keyId === key.id && t.languageId === lang.id
+            );
+            result[lang.languageCode][key.key] = translation?.value || "";
+          });
+        });
+
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Content-Disposition", `attachment; filename="translations.json"`);
-        res.json({});
+        res.json(result);
       } else {
+        // CSV format: key,language_code,value,status
+        let csv = "key,language_code,value,status\n";
+        
+        keys.forEach(key => {
+          selectedLanguages.forEach(lang => {
+            const translation = translations.find(
+              (t: Translation) => t.keyId === key.id && t.languageId === lang.id
+            );
+            const value = translation?.value || "";
+            const status = translation?.status || "draft";
+            csv += `${key.key},${lang.languageCode},"${value.replace(/"/g, '""')}",${status}\n`;
+          });
+        });
+
         res.setHeader("Content-Type", "text/csv");
         res.setHeader("Content-Disposition", `attachment; filename="translations.csv"`);
-        res.send("key,language_code,value,status\n");
+        res.send(csv);
       }
     } catch (error) {
       console.error("Error exporting:", error);
