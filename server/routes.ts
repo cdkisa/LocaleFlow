@@ -152,10 +152,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Translation key endpoints
+  // Translation key endpoints with search/filter
   app.get("/api/projects/:id/keys", isAuthenticated, async (req, res) => {
     try {
-      const keys = await storage.getProjectKeys(req.params.id);
+      const { search } = req.query;
+      let keys = await storage.getProjectKeys(req.params.id);
+      
+      // Apply search filter if provided
+      if (search && typeof search === "string") {
+        const searchLower = search.toLowerCase();
+        keys = keys.filter(key => 
+          key.key.toLowerCase().includes(searchLower) ||
+          key.description?.toLowerCase().includes(searchLower)
+        );
+      }
+      
       res.json(keys);
     } catch (error) {
       console.error("Error fetching keys:", error);
@@ -210,10 +221,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Translation endpoints
+  // Global search endpoint across keys and translations
+  app.get("/api/projects/:id/search", isAuthenticated, async (req, res) => {
+    try {
+      const { q } = req.query;
+      
+      if (!q || typeof q !== "string") {
+        return res.status(400).json({ message: "Search query 'q' is required" });
+      }
+      
+      const searchLower = q.toLowerCase();
+      
+      // Search across translation keys
+      const keys = await storage.getProjectKeys(req.params.id);
+      const matchingKeys = keys.filter(key => 
+        key.key.toLowerCase().includes(searchLower) ||
+        key.description?.toLowerCase().includes(searchLower)
+      );
+      
+      // Search across translations
+      const translations = await storage.getProjectTranslations(req.params.id);
+      const matchingTranslations = translations.filter(t => 
+        t.value.toLowerCase().includes(searchLower)
+      );
+      
+      // Get unique key IDs from matching translations
+      const keyIdsFromTranslations = new Set(matchingTranslations.map(t => t.keyId));
+      const additionalKeys = keys.filter(k => 
+        keyIdsFromTranslations.has(k.id) && !matchingKeys.find(mk => mk.id === k.id)
+      );
+      
+      res.json({
+        keys: matchingKeys,
+        translations: matchingTranslations,
+        additionalKeys,
+        totalResults: matchingKeys.length + matchingTranslations.length
+      });
+    } catch (error) {
+      console.error("Error searching:", error);
+      res.status(500).json({ message: "Failed to search" });
+    }
+  });
+
+  // Translation endpoints with filtering
   app.get("/api/projects/:id/translations", isAuthenticated, async (req, res) => {
     try {
-      const translations = await storage.getProjectTranslations(req.params.id);
+      const { keyId, languageId, status, search } = req.query;
+      let translations = await storage.getProjectTranslations(req.params.id);
+      
+      // Apply filters if provided
+      if (keyId && typeof keyId === "string") {
+        translations = translations.filter(t => t.keyId === keyId);
+      }
+      
+      if (languageId && typeof languageId === "string") {
+        translations = translations.filter(t => t.languageId === languageId);
+      }
+      
+      if (status && typeof status === "string") {
+        translations = translations.filter(t => t.status === status);
+      }
+      
+      // Apply search filter across translation values
+      if (search && typeof search === "string") {
+        const searchLower = search.toLowerCase();
+        translations = translations.filter(t => 
+          t.value.toLowerCase().includes(searchLower)
+        );
+      }
+      
       res.json(translations);
     } catch (error) {
       console.error("Error fetching translations:", error);
