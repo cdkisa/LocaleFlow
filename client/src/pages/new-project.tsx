@@ -53,9 +53,10 @@ export default function NewProject() {
 
   const createProject = useMutation({
     mutationFn: async (data: ProjectFormData & { languages: Language[] }) => {
-      return await apiRequest("POST", "/api/projects", data);
+      const res = await apiRequest("POST", "/api/projects", data);
+      return await res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       toast({
         title: "Success",

@@ -15,6 +15,7 @@ import NewProject from "@/pages/new-project";
 import ProjectDetail from "@/pages/project-detail";
 import TranslationEditor from "@/pages/translation-editor";
 import NewKey from "@/pages/new-key";
+import EditKey from "@/pages/edit-key";
 import ImportTranslations from "@/pages/import-translations";
 import ExportTranslations from "@/pages/export-translations";
 import ProjectSettings from "@/pages/project-settings";
@@ -34,6 +35,7 @@ function Router() {
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/projects/:id/editor" component={TranslationEditor} />
           <Route path="/projects/:id/keys/new" component={NewKey} />
+          <Route path="/projects/:id/keys/:keyId" component={EditKey} />
           <Route path="/projects/:id/import" component={ImportTranslations} />
           <Route path="/projects/:id/export" component={ExportTranslations} />
           <Route path="/projects/:id/settings" component={ProjectSettings} />
