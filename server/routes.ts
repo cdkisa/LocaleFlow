@@ -123,7 +123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Language endpoints
+  // Language endpoints - GET only (other operations in Language Management section below)
   app.get("/api/projects/:id/languages", isAuthenticated, async (req, res) => {
     try {
       const languages = await storage.getProjectLanguages(req.params.id);
@@ -131,24 +131,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching languages:", error);
       res.status(500).json({ message: "Failed to fetch languages" });
-    }
-  });
-
-  app.post("/api/projects/:id/languages", isAuthenticated, async (req: any, res) => {
-    try {
-      const validatedData = insertProjectLanguageSchema.parse({
-        ...req.body,
-        projectId: req.params.id,
-      });
-
-      const language = await storage.addLanguageToProject(validatedData);
-      res.json(language);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
-      }
-      console.error("Error adding language:", error);
-      res.status(500).json({ message: "Failed to add language" });
     }
   });
 
@@ -351,6 +333,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting translation:", error);
       res.status(500).json({ message: "Failed to delete translation" });
+    }
+  });
+
+  // Language management endpoints
+  app.post("/api/projects/:id/languages", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      
+      // Check if user has access to this project
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (project.ownerId !== userId) {
+        return res.status(403).json({ message: "Only project owners can add languages" });
+      }
+      
+      const validatedData = insertProjectLanguageSchema.parse({
+        ...req.body,
+        projectId,
+      });
+      
+      const language = await storage.addLanguageToProject(validatedData);
+      res.json(language);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Error adding language:", error);
+      res.status(500).json({ message: "Failed to add language" });
+    }
+  });
+
+  app.put("/api/projects/:id/languages/:languageId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      
+      // Check if user has access to this project
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (project.ownerId !== userId) {
+        return res.status(403).json({ message: "Only project owners can update languages" });
+      }
+      
+      const language = await storage.updateLanguage(req.params.languageId, req.body);
+      res.json(language);
+    } catch (error) {
+      console.error("Error updating language:", error);
+      res.status(500).json({ message: "Failed to update language" });
+    }
+  });
+
+  app.post("/api/projects/:id/languages/:languageId/set-default", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      
+      // Check if user has access to this project
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (project.ownerId !== userId) {
+        return res.status(403).json({ message: "Only project owners can set default language" });
+      }
+      
+      await storage.setDefaultLanguage(projectId, req.params.languageId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error setting default language:", error);
+      res.status(500).json({ message: "Failed to set default language" });
+    }
+  });
+
+  app.delete("/api/projects/:id/languages/:languageId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      
+      // Check if user has access to this project
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (project.ownerId !== userId) {
+        return res.status(403).json({ message: "Only project owners can delete languages" });
+      }
+      
+      await storage.deleteLanguage(req.params.languageId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting language:", error);
+      res.status(500).json({ message: "Failed to delete language" });
     }
   });
 

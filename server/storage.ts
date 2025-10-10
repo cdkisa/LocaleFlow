@@ -37,6 +37,8 @@ export interface IStorage {
   // Language operations
   addLanguageToProject(language: InsertProjectLanguage): Promise<ProjectLanguage>;
   getProjectLanguages(projectId: string): Promise<ProjectLanguage[]>;
+  updateLanguage(id: string, language: Partial<InsertProjectLanguage>): Promise<ProjectLanguage>;
+  setDefaultLanguage(projectId: string, languageId: string): Promise<void>;
   deleteLanguage(id: string): Promise<void>;
 
   // Translation key operations
@@ -134,7 +136,63 @@ export class DatabaseStorage implements IStorage {
       .where(eq(projectLanguages.projectId, projectId));
   }
 
+  async updateLanguage(id: string, language: Partial<InsertProjectLanguage>): Promise<ProjectLanguage> {
+    // Verify language exists first
+    const existing = await db
+      .select()
+      .from(projectLanguages)
+      .where(eq(projectLanguages.id, id))
+      .limit(1);
+    
+    if (!existing || existing.length === 0) {
+      throw new Error("Language not found");
+    }
+    
+    const [updated] = await db
+      .update(projectLanguages)
+      .set(language)
+      .where(eq(projectLanguages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async setDefaultLanguage(projectId: string, languageId: string): Promise<void> {
+    // Verify the language belongs to the project
+    const language = await db
+      .select()
+      .from(projectLanguages)
+      .where(eq(projectLanguages.id, languageId))
+      .limit(1);
+    
+    if (!language || language.length === 0 || language[0].projectId !== projectId) {
+      throw new Error("Language not found in project");
+    }
+    
+    // First, unset all default languages for this project
+    await db
+      .update(projectLanguages)
+      .set({ isDefault: false })
+      .where(eq(projectLanguages.projectId, projectId));
+
+    // Then set the specified language as default (with additional projectId check)
+    await db
+      .update(projectLanguages)
+      .set({ isDefault: true })
+      .where(sql`${projectLanguages.id} = ${languageId} AND ${projectLanguages.projectId} = ${projectId}`);
+  }
+
   async deleteLanguage(id: string): Promise<void> {
+    // Verify language exists first
+    const existing = await db
+      .select()
+      .from(projectLanguages)
+      .where(eq(projectLanguages.id, id))
+      .limit(1);
+    
+    if (!existing || existing.length === 0) {
+      throw new Error("Language not found");
+    }
+    
     await db.delete(projectLanguages).where(eq(projectLanguages.id, id));
   }
 
