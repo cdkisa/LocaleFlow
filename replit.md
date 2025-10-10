@@ -127,3 +127,43 @@ Preferred communication style: Simple, everyday language.
 **Import/Export Formats:**
 - JSON - Nested object structure with language codes as keys
 - CSV - Flat structure with key, language code, and translation columns
+- PapaParse library for robust CSV parsing with quote/comma handling
+- Zod validation with row-level error reporting
+
+## Recent Changes (Latest Session)
+
+### Language Management (Completed)
+- **Full CRUD for Languages**: Project settings now includes complete language management
+  - Add new languages with code and name (e.g., "es", "Spanish")
+  - Edit existing language details in-place
+  - Set default language per project (only one can be default)
+  - Delete languages no longer needed
+- **API Endpoints**: POST/PUT/DELETE/set-default with owner verification
+- **Storage Security**: All language operations verify project ownership and language existence
+- **Route**: `/projects/:id/settings` includes language management UI
+
+### Translation Key Editing (Completed)
+- **Edit Key Page**: New dedicated page for editing translation key names and descriptions
+- **Route**: `/projects/:id/keys/:keyId` renders edit form
+- **Functionality**: 
+  - Pre-populates form with current key and description
+  - Validates changes before saving
+  - Redirects back to project detail after successful update
+- **API Endpoints**: Uses existing GET/PATCH `/api/translation-keys/:id`
+
+### Bug Fixes (Completed)
+- **Project Creation**: Fixed redirect after creating project (was redirecting to `/projects/undefined`)
+  - Root cause: Mutation wasn't parsing JSON response
+  - Solution: Added `await res.json()` to extract project data with ID
+- **404 on Edit Key**: Added missing route and page for editing translation keys
+
+### Member Management (Completed)
+- **Team Collaboration**: Project settings includes member management
+- **Add/Remove Members**: Owner can add team members with roles (developer, translator, reviewer)
+- **Role Display**: Visual badges showing member roles with color coding
+- **API Endpoints**: GET/POST/DELETE for project members with owner verification
+
+### Security Enhancements
+- **Language Operations**: All language mutations verify project ownership before allowing changes
+- **Duplicate Route Removal**: Removed insecure language POST route without ownership checks
+- **Project Scoping**: setDefaultLanguage and updateLanguage verify language belongs to project
