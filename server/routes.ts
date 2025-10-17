@@ -616,7 +616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { parseDocument } = await import("./documentParser");
       
-      objectFile.download(async (err, contents) => {
+      objectFile.download(async (err: Error | null, contents: Buffer) => {
         if (err) {
           console.error("Error downloading file for parsing:", err);
           await storage.updateDocument(document.id, {

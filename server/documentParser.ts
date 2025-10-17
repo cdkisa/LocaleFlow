@@ -1,5 +1,4 @@
 import mammoth from "mammoth";
-import pdfParse from "pdf-parse";
 
 export interface ParsedDocument {
   text: string;
@@ -30,6 +29,7 @@ export async function parsePdfDocument(
   buffer: Buffer
 ): Promise<ParsedDocument> {
   try {
+    const pdfParse = (await import("pdf-parse")).default;
     const data = await pdfParse(buffer);
     return {
       text: data.text.trim(),

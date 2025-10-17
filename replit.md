@@ -167,3 +167,24 @@ Preferred communication style: Simple, everyday language.
 - **Language Operations**: All language mutations verify project ownership before allowing changes
 - **Duplicate Route Removal**: Removed insecure language POST route without ownership checks
 - **Project Scoping**: setDefaultLanguage and updateLanguage verify language belongs to project
+
+### Document Upload Feature (Completed)
+- **Object Storage Integration**: Replit object storage configured for secure file uploads
+- **Document Parsing**: Support for Word (.docx) and PDF files with automatic text extraction
+  - Uses mammoth library for Word document parsing
+  - Uses pdf-parse library for PDF document parsing
+- **Automatic Key Creation**: Extracted text is split into sentences and converted to translation keys
+  - Keys are automatically generated with descriptive names
+  - Limited to 50 keys per document to prevent overload
+- **Document Management**: Full CRUD operations for uploaded documents
+  - Upload documents with drag-and-drop interface (Uppy dashboard)
+  - View documents with status tracking (pending, processing, completed, failed)
+  - Delete documents with owner permission checks
+- **API Endpoints**: 
+  - POST /api/objects/upload - Get presigned upload URL
+  - GET /objects/:objectPath - Download document with ACL checks
+  - GET /api/projects/:id/documents - List project documents
+  - POST /api/projects/:id/documents - Create document after upload
+  - DELETE /api/projects/:id/documents/:documentId - Delete document
+- **Database Schema**: New documents table with metadata tracking (filename, type, size, storage path, extraction status, error messages)
+- **UI Components**: Documents tab in project detail page with upload button, document table, and status badges

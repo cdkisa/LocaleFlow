@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { useState } from "react";
-import { Plus, Settings, FileDown, FileUp, Search, Filter } from "lucide-react";
+import { Plus, Settings, FileDown, FileUp, Search, Filter, FileText, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { Project, ProjectLanguage, TranslationKey, Translation } from "@shared/schema";
+import type { Project, ProjectLanguage, TranslationKey, Translation, Document } from "@shared/schema";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import type { UploadResult } from "@uppy/core";
 
 interface TranslationWithDetails extends Translation {
   key?: string;
@@ -58,6 +60,11 @@ export default function ProjectDetail() {
     enabled: !!id,
   });
 
+  const { data: documents } = useQuery<Document[]>({
+    queryKey: ["/api/projects", id, "documents"],
+    enabled: !!id,
+  });
+
   const deleteKey = useMutation({
     mutationFn: async (keyId: string) => {
       return await apiRequest("DELETE", `/api/translation-keys/${keyId}`, null);
@@ -89,6 +96,79 @@ export default function ProjectDetail() {
       });
     },
   });
+
+  const deleteDocument = useMutation({
+    mutationFn: async (documentId: string) => {
+      return await apiRequest("DELETE", `/api/projects/${id}/documents/${documentId}`, null);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "documents"] });
+      toast({
+        title: "Success",
+        description: "Document deleted",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete document",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleGetUploadParameters = async () => {
+    const res = await fetch("/api/objects/upload", {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    return {
+      method: "PUT" as const,
+      url: data.uploadURL,
+    };
+  };
+
+  const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+    if (!result.successful || result.successful.length === 0) return;
+
+    const file = result.successful[0];
+    const uploadUrl = file.uploadURL;
+
+    try {
+      const res = await apiRequest("POST", `/api/projects/${id}/documents`, {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        uploadUrl,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "keys"] });
+
+      toast({
+        title: "Success",
+        description: "Document uploaded and processing started",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to process document",
+        variant: "destructive",
+      });
+    }
+  };
 
   const filteredKeys = keys?.filter(
     (key) =>
@@ -244,6 +324,7 @@ export default function ProjectDetail() {
         <TabsList>
           <TabsTrigger value="keys" data-testid="tab-keys">Translation Keys</TabsTrigger>
           <TabsTrigger value="editor" data-testid="tab-editor">Editor</TabsTrigger>
+          <TabsTrigger value="documents" data-testid="tab-documents">Documents</TabsTrigger>
         </TabsList>
 
         <TabsContent value="keys" className="space-y-4">
@@ -356,6 +437,115 @@ export default function ProjectDetail() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="documents" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Upload Word or PDF documents to automatically extract translation keys
+            </p>
+            <ObjectUploader
+              maxNumberOfFiles={1}
+              maxFileSize={20971520}
+              allowedFileTypes={[
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              ]}
+              onGetUploadParameters={handleGetUploadParameters}
+              onComplete={handleUploadComplete}
+              buttonVariant="default"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Upload Document
+            </ObjectUploader>
+          </div>
+
+          {documents && documents.length > 0 ? (
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>File Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Size</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Uploaded</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {documents.map((doc) => (
+                    <TableRow key={doc.id} data-testid={`row-document-${doc.id}`}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          {doc.fileName}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {doc.fileType.includes("pdf") ? "PDF" : "Word"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {(doc.fileSize / 1024 / 1024).toFixed(2)} MB
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            doc.status === "completed"
+                              ? "default"
+                              : doc.status === "failed"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                          data-testid={`badge-status-${doc.id}`}
+                        >
+                          {doc.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(doc.createdAt!).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteDocument.mutate(doc.id)}
+                          data-testid={`button-delete-document-${doc.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center">
+                <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-4">
+                  No documents uploaded yet
+                </p>
+                <ObjectUploader
+                  maxNumberOfFiles={1}
+                  maxFileSize={20971520}
+                  allowedFileTypes={[
+                    "application/pdf",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  ]}
+                  onGetUploadParameters={handleGetUploadParameters}
+                  onComplete={handleUploadComplete}
+                  buttonVariant="default"
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload First Document
+                </ObjectUploader>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
