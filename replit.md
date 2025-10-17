@@ -168,11 +168,12 @@ Preferred communication style: Simple, everyday language.
 - **Duplicate Route Removal**: Removed insecure language POST route without ownership checks
 - **Project Scoping**: setDefaultLanguage and updateLanguage verify language belongs to project
 
-### Document Upload Feature (Completed)
+### Document Upload Feature (Completed - October 17, 2025)
 - **Object Storage Integration**: Replit object storage configured for secure file uploads
 - **Document Parsing**: Support for Word (.docx) and PDF files with automatic text extraction
   - Uses mammoth library for Word document parsing
-  - Uses pdf-parse library for PDF document parsing
+  - Uses pdf-parse library (dynamic import) for PDF document parsing
+  - **Technical Fix**: PDF parsing uses `(await import("pdf-parse")).default` to resolve CommonJS/ESM compatibility
 - **Automatic Key Creation**: Extracted text is split into sentences and converted to translation keys
   - Keys are automatically generated with descriptive names
   - Limited to 50 keys per document to prevent overload
@@ -188,3 +189,4 @@ Preferred communication style: Simple, everyday language.
   - DELETE /api/projects/:id/documents/:documentId - Delete document
 - **Database Schema**: New documents table with metadata tracking (filename, type, size, storage path, extraction status, error messages)
 - **UI Components**: Documents tab in project detail page with upload button, document table, and status badges
+- **Security**: Owner-only upload/delete operations, private file storage with ACL policies
