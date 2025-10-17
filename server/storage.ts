@@ -6,6 +6,7 @@ import {
   translationKeys,
   translations,
   projectMembers,
+  documents,
   type User,
   type UpsertUser,
   type Project,
@@ -18,6 +19,8 @@ import {
   type InsertTranslation,
   type ProjectMember,
   type InsertProjectMember,
+  type Document,
+  type InsertDocument,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -59,6 +62,13 @@ export interface IStorage {
   addMemberToProject(member: InsertProjectMember): Promise<ProjectMember>;
   getProjectMembers(projectId: string): Promise<ProjectMember[]>;
   removeMemberFromProject(id: string): Promise<void>;
+
+  // Document operations
+  createDocument(document: InsertDocument): Promise<Document>;
+  getDocument(id: string): Promise<Document | undefined>;
+  getProjectDocuments(projectId: string): Promise<Document[]>;
+  updateDocument(id: string, updates: Partial<InsertDocument>): Promise<Document>;
+  deleteDocument(id: string): Promise<void>;
 
   // Stats
   getUserStats(userId: string): Promise<{
@@ -294,6 +304,38 @@ export class DatabaseStorage implements IStorage {
 
   async removeMemberFromProject(id: string): Promise<void> {
     await db.delete(projectMembers).where(eq(projectMembers.id, id));
+  }
+
+  // Document operations
+  async createDocument(document: InsertDocument): Promise<Document> {
+    const [newDocument] = await db.insert(documents).values(document).returning();
+    return newDocument;
+  }
+
+  async getDocument(id: string): Promise<Document | undefined> {
+    const [document] = await db.select().from(documents).where(eq(documents.id, id));
+    return document;
+  }
+
+  async getProjectDocuments(projectId: string): Promise<Document[]> {
+    return await db
+      .select()
+      .from(documents)
+      .where(eq(documents.projectId, projectId))
+      .orderBy(desc(documents.createdAt));
+  }
+
+  async updateDocument(id: string, updates: Partial<InsertDocument>): Promise<Document> {
+    const [updated] = await db
+      .update(documents)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(documents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocument(id: string): Promise<void> {
+    await db.delete(documents).where(eq(documents.id, id));
   }
 
   // Stats

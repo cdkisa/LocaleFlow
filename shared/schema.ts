@@ -56,6 +56,7 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   languages: many(projectLanguages),
   keys: many(translationKeys),
   members: many(projectMembers),
+  documents: many(documents),
 }));
 
 export const insertProjectSchema = createInsertSchema(projects).omit({
@@ -189,9 +190,46 @@ export const insertProjectMemberSchema = createInsertSchema(projectMembers).omit
 export type InsertProjectMember = z.infer<typeof insertProjectMemberSchema>;
 export type ProjectMember = typeof projectMembers.$inferSelect;
 
+// Documents - uploaded Word and PDF files for translation
+export const documents = pgTable("documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  fileType: varchar("file_type", { length: 50 }).notNull(), // "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  fileSize: integer("file_size").notNull(), // in bytes
+  storagePath: text("storage_path").notNull(), // object storage path
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, processing, completed, failed
+  extractedText: text("extracted_text"), // extracted content from the document
+  errorMessage: text("error_message"), // if extraction failed
+  uploadedBy: varchar("uploaded_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  project: one(projects, {
+    fields: [documents.projectId],
+    references: [projects.id],
+  }),
+  uploader: one(users, {
+    fields: [documents.uploadedBy],
+    references: [users.id],
+  }),
+}));
+
+export const insertDocumentSchema = createInsertSchema(documents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type Document = typeof documents.$inferSelect;
+
 // User relations
 export const usersRelations = relations(users, ({ many }) => ({
   ownedProjects: many(projects),
   projectMemberships: many(projectMembers),
   translations: many(translations),
+  uploadedDocuments: many(documents),
 }));

@@ -521,6 +521,181 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Document endpoints (Blueprint: javascript_object_storage)
+  app.post("/api/objects/upload", isAuthenticated, async (req, res) => {
+    try {
+      const { ObjectStorageService } = await import("./objectStorage");
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ message: "Failed to get upload URL" });
+    }
+  });
+
+  app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { ObjectStorageService, ObjectNotFoundError } = await import("./objectStorage");
+      const { ObjectPermission } = await import("./objectAcl");
+      const objectStorageService = new ObjectStorageService();
+      
+      const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        objectFile,
+        userId: userId,
+        requestedPermission: ObjectPermission.READ,
+      });
+      
+      if (!canAccess) {
+        return res.sendStatus(401);
+      }
+      
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error: any) {
+      console.error("Error accessing object:", error);
+      if (error.name === "ObjectNotFoundError") {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  app.get("/api/projects/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const documents = await storage.getProjectDocuments(req.params.id);
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      res.status(500).json({ message: "Failed to fetch documents" });
+    }
+  });
+
+  app.post("/api/projects/:id/documents", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      
+      const project = await storage.getProject(projectId);
+      if (!project || project.ownerId !== userId) {
+        return res.status(403).json({ 
+          message: "You don't have permission to upload documents to this project" 
+        });
+      }
+
+      const { fileName, fileType, fileSize, uploadUrl } = req.body;
+      
+      if (!fileName || !fileType || !fileSize || !uploadUrl) {
+        return res.status(400).json({ 
+          message: "fileName, fileType, fileSize, and uploadUrl are required" 
+        });
+      }
+
+      const { ObjectStorageService } = await import("./objectStorage");
+      const { ObjectPermission } = await import("./objectAcl");
+      const objectStorageService = new ObjectStorageService();
+      
+      const storagePath = objectStorageService.normalizeObjectEntityPath(uploadUrl);
+      const objectFile = await objectStorageService.getObjectEntityFile(storagePath);
+      
+      await objectStorageService.trySetObjectEntityAclPolicy(uploadUrl, {
+        owner: userId,
+        visibility: "private",
+      });
+
+      const document = await storage.createDocument({
+        projectId,
+        fileName,
+        fileType,
+        fileSize,
+        storagePath,
+        status: "pending",
+        uploadedBy: userId,
+      });
+
+      const { parseDocument } = await import("./documentParser");
+      
+      objectFile.download(async (err, contents) => {
+        if (err) {
+          console.error("Error downloading file for parsing:", err);
+          await storage.updateDocument(document.id, {
+            status: "failed",
+            errorMessage: "Failed to download file for parsing",
+          });
+          return;
+        }
+
+        const parsed = await parseDocument(contents, fileType);
+        
+        if (parsed.error) {
+          await storage.updateDocument(document.id, {
+            status: "failed",
+            errorMessage: parsed.error,
+            extractedText: parsed.text,
+          });
+        } else {
+          await storage.updateDocument(document.id, {
+            status: "completed",
+            extractedText: parsed.text,
+          });
+          
+          if (parsed.text.trim()) {
+            const sentences = parsed.text
+              .split(/[.!?]\s+/)
+              .filter(s => s.trim().length > 0)
+              .slice(0, 50);
+
+            for (const sentence of sentences) {
+              const keyName = sentence
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "_")
+                .replace(/^_|_$/g, "")
+                .slice(0, 100);
+              
+              const existingKey = await storage.getProjectKeys(projectId);
+              const keyExists = existingKey.some(k => k.key === keyName);
+              
+              if (!keyExists) {
+                await storage.createTranslationKey({
+                  projectId,
+                  key: keyName,
+                  description: `From document: ${fileName}`,
+                });
+              }
+            }
+          }
+        }
+      });
+
+      res.json(document);
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      res.status(500).json({ message: "Failed to upload document" });
+    }
+  });
+
+  app.delete("/api/projects/:id/documents/:documentId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      const documentId = req.params.documentId;
+      
+      const project = await storage.getProject(projectId);
+      if (!project || project.ownerId !== userId) {
+        return res.status(403).json({ 
+          message: "You don't have permission to delete documents from this project" 
+        });
+      }
+
+      await storage.deleteDocument(documentId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
   // AI Translation suggestion endpoint
   app.post("/api/translate/suggest", isAuthenticated, async (req, res) => {
     try {
