@@ -14,6 +14,7 @@ export default function ExportTranslations() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const [format, setFormat] = useState<"json" | "csv">("json");
+  const [useNestedNamespaces, setUseNestedNamespaces] = useState(false);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -43,6 +44,10 @@ export default function ExportTranslations() {
         format,
         languages: selectedLanguages.join(","),
       });
+      
+      if (format === "json" && useNestedNamespaces) {
+        params.append("nested", "true");
+      }
 
       const response = await fetch(`/api/projects/${id}/export?${params}`);
 
@@ -95,7 +100,7 @@ export default function ExportTranslations() {
               <RadioGroupItem value="json" id="json-export" data-testid="radio-format-json" />
               <Label htmlFor="json-export" className="flex items-center gap-2 cursor-pointer">
                 <FileJson className="h-4 w-4" />
-                JSON - Nested format for easy integration
+                JSON - Multi-language format
               </Label>
             </div>
             <div className="flex items-center space-x-2">
@@ -106,6 +111,25 @@ export default function ExportTranslations() {
               </Label>
             </div>
           </RadioGroup>
+          
+          {format === "json" && (
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="nested-namespaces"
+                  checked={useNestedNamespaces}
+                  onCheckedChange={(checked) => setUseNestedNamespaces(checked as boolean)}
+                  data-testid="checkbox-nested-namespaces"
+                />
+                <Label htmlFor="nested-namespaces" className="cursor-pointer font-normal">
+                  Use nested namespaces
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Convert dot-separated keys to nested objects (e.g., "greeting.hello" → {`{ "greeting": { "hello": "..." } }`})
+                  </p>
+                </Label>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
