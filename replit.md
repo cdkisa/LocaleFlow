@@ -53,6 +53,7 @@ Preferred communication style: Simple, everyday language.
 **OpenAI Integration:** Uses user's OpenAI subscription (gpt-5 model) via `OPENAI_API_KEY` secret.
 **Backend API:** Protected endpoint for AI suggestions, identifies source language, sends key name, description, source, and target language for context.
 **Frontend UI:** Sparkles icon in translation editor, loading indicators, toast notifications for feedback.
+**Auto-Save Behavior:** AI suggestions automatically save the translated value and set status to "in_review" for quality control workflow.
 **Security:** API key stored server-side, endpoint protected by authentication.
 
 ### Bulk Translation Feature

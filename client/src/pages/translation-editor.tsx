@@ -425,10 +425,29 @@ export default function TranslationEditor() {
 
       const result = await suggestTranslation.mutateAsync(translationId);
       if (result.suggestion) {
-        updateTranslation(keyId, languageId, result.suggestion);
+        await saveTranslation.mutateAsync({
+          keyId,
+          languageId,
+          value: result.suggestion,
+          status: "in_review",
+          translationId,
+        });
+        
+        setTranslationData((prev) => ({
+          ...prev,
+          [keyId]: {
+            ...prev[keyId],
+            [languageId]: {
+              ...prev[keyId]?.[languageId],
+              value: result.suggestion,
+              status: "in_review",
+            },
+          },
+        }));
+        
         toast({
-          title: "AI Suggestion",
-          description: "Translation suggestion added",
+          title: "AI Suggestion Applied",
+          description: "Translation saved with status 'In Review'",
         });
       }
     } catch (error) {
@@ -519,7 +538,26 @@ export default function TranslationEditor() {
           if (translationId) {
             const result = await suggestTranslation.mutateAsync(translationId);
             if (result.suggestion) {
-              updateTranslation(keyId, lang.id, result.suggestion);
+              await saveTranslation.mutateAsync({
+                keyId,
+                languageId: lang.id,
+                value: result.suggestion,
+                status: "in_review",
+                translationId,
+              });
+              
+              setTranslationData((prev) => ({
+                ...prev,
+                [keyId]: {
+                  ...prev[keyId],
+                  [lang.id]: {
+                    ...prev[keyId]?.[lang.id],
+                    value: result.suggestion,
+                    status: "in_review",
+                  },
+                },
+              }));
+              
               succeeded++;
             }
           }
