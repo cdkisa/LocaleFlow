@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Sparkles, Loader2, Search, Check, X } from "lucide-react";
+import { Sparkles, Loader2, Search, Check, X, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import type {
   ProjectLanguage,
   TranslationKey,
   Translation,
+  TranslationMemory,
 } from "@shared/schema";
 
 interface TranslationData {
@@ -76,6 +77,7 @@ function TranslationCell({
   translationKey,
   language,
   translationData,
+  sourceText,
   onUpdate,
   onSave,
   onAISuggest,
@@ -87,6 +89,7 @@ function TranslationCell({
   translationKey: TranslationKey;
   language: ProjectLanguage;
   translationData: TranslationData;
+  sourceText?: string;
   onUpdate: (keyId: string, languageId: string, value: string) => void;
   onSave: (keyId: string, languageId: string) => Promise<void>;
   onAISuggest: (keyId: string, languageId: string) => void;
@@ -96,24 +99,56 @@ function TranslationCell({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [originalValue, setOriginalValue] = useState("");
+  const [memorySuggestion, setMemorySuggestion] = useState<TranslationMemory | null>(null);
+  const [isLoadingMemory, setIsLoadingMemory] = useState(false);
   const translationInfo = translationData[keyId]?.[language.id];
   const value = translationInfo?.value || "";
   const status = translationInfo?.status || "draft";
   const hasValue = value.trim().length > 0;
 
-  const handleEditStart = () => {
+  const handleEditStart = async () => {
     setOriginalValue(value);
     setIsEditing(true);
+    
+    // Check for translation memory suggestion if not default language and has source text
+    if (!isDefault && sourceText && sourceText.trim()) {
+      setIsLoadingMemory(true);
+      try {
+        const params = new URLSearchParams({
+          sourceText: sourceText,
+          targetLanguageCode: language.languageCode,
+        });
+        const response = await fetch(`/api/translation-memory/suggest?${params}`);
+        if (response.ok) {
+          const suggestion = await response.json();
+          if (suggestion) {
+            setMemorySuggestion(suggestion);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching translation memory:", error);
+      } finally {
+        setIsLoadingMemory(false);
+      }
+    }
+  };
+
+  const handleApplyMemory = () => {
+    if (memorySuggestion) {
+      onUpdate(keyId, language.id, memorySuggestion.translatedText);
+    }
   };
 
   const handleCancel = () => {
     onUpdate(keyId, language.id, originalValue);
     setIsEditing(false);
+    setMemorySuggestion(null);
   };
 
   const handleSaveClick = async () => {
     await onSave(keyId, language.id);
     setIsEditing(false);
+    setMemorySuggestion(null);
   };
 
   return (
@@ -128,6 +163,22 @@ function TranslationCell({
             rows={1}
             data-testid={`input-translation-${keyId}-${language.id}`}
           />
+          {memorySuggestion && (
+            <div className="flex items-center gap-2 p-2 rounded-md bg-chart-1/10 border border-chart-1/30">
+              <History className="h-3.5 w-3.5 text-chart-1" />
+              <span className="text-xs text-muted-foreground flex-1">
+                Translation Memory: <span className="text-foreground">{memorySuggestion.translatedText}</span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleApplyMemory}
+                data-testid={`button-apply-memory-${keyId}-${language.id}`}
+              >
+                Apply
+              </Button>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
@@ -755,32 +806,41 @@ export default function TranslationEditor() {
                 <TableCell>
                   <Table>
                     <TableBody>
-                      {languages?.map((lang) => (
-                        <TableRow key={lang.id}>
-                          <TableCell className="font-mono text-xs text-muted-foreground w-20">
-                            {lang.languageCode}
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <TranslationCell
-                              keyId={key.id}
-                              translationKey={key}
-                              language={lang}
-                              translationData={translationData}
-                              onUpdate={updateTranslation}
-                              onSave={handleSave}
-                              onAISuggest={handleAISuggest}
-                              isDefault={!!lang.isDefault}
-                              isSaving={
-                                savingStates[`${key.id}-${lang.id}`] || false
-                              }
-                              isSuggesting={
-                                suggestingStates[`${key.id}-${lang.id}`] ||
-                                false
-                              }
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {languages?.map((lang) => {
+                        // Get source text from default language
+                        const defaultLang = languages.find(l => l.isDefault);
+                        const sourceText = defaultLang
+                          ? translationData[key.id]?.[defaultLang.id]?.value
+                          : undefined;
+                        
+                        return (
+                          <TableRow key={lang.id}>
+                            <TableCell className="font-mono text-xs text-muted-foreground w-20">
+                              {lang.languageCode}
+                            </TableCell>
+                            <TableCell className="align-top">
+                              <TranslationCell
+                                keyId={key.id}
+                                translationKey={key}
+                                language={lang}
+                                translationData={translationData}
+                                sourceText={sourceText}
+                                onUpdate={updateTranslation}
+                                onSave={handleSave}
+                                onAISuggest={handleAISuggest}
+                                isDefault={!!lang.isDefault}
+                                isSaving={
+                                  savingStates[`${key.id}-${lang.id}`] || false
+                                }
+                                isSuggesting={
+                                  suggestingStates[`${key.id}-${lang.id}`] ||
+                                  false
+                                }
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableCell>
