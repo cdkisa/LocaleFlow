@@ -1,20 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Save, Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, Search, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -30,24 +31,180 @@ interface TranslationData {
   };
 }
 
-const statusOptions = [
-  { value: "draft", label: "Draft" },
-  { value: "in_review", label: "In Review" },
-  { value: "approved", label: "Approved" },
-];
-
 const statusColors = {
   draft: "bg-slate-500/10 text-slate-400 border-slate-500/20",
   in_review: "bg-chart-3/10 text-chart-3 border-chart-3/20",
   approved: "bg-chart-2/10 text-chart-2 border-chart-2/20",
 };
 
+function HighlightedText({ text }: { text: string }) {
+  if (!text) return null;
+
+  const parts = text.split(/(\{[^}]+\})/g);
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {parts.map((part, index) => {
+        if (part.match(/\{[^}]+\}/)) {
+          return (
+            <Badge
+              key={index}
+              variant="outline"
+              className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs font-mono px-1 py-0"
+              data-testid={`badge-placeholder-${index}`}
+            >
+              {part}
+            </Badge>
+          );
+        }
+        return <span key={index} className="text-sm">{part}</span>;
+      })}
+    </div>
+  );
+}
+
+function TranslationCell({
+  keyId,
+  translationKey,
+  language,
+  translationData,
+  onUpdate,
+  onSave,
+  onAISuggest,
+  isDefault,
+  isSaving,
+  isSuggesting,
+}: {
+  keyId: string;
+  translationKey: TranslationKey;
+  language: ProjectLanguage;
+  translationData: TranslationData;
+  onUpdate: (keyId: string, languageId: string, value: string) => void;
+  onSave: (keyId: string, languageId: string) => Promise<void>;
+  onAISuggest: (keyId: string, languageId: string) => void;
+  isDefault: boolean;
+  isSaving: boolean;
+  isSuggesting: boolean;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [originalValue, setOriginalValue] = useState("");
+  const translationInfo = translationData[keyId]?.[language.id];
+  const value = translationInfo?.value || "";
+  const status = translationInfo?.status || "draft";
+  const hasValue = value.trim().length > 0;
+
+  const handleEditStart = () => {
+    setOriginalValue(value);
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    onUpdate(keyId, language.id, originalValue);
+    setIsEditing(false);
+  };
+
+  const handleSaveClick = async () => {
+    await onSave(keyId, language.id);
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="min-w-64 max-w-md">
+      {isEditing ? (
+        <div className="space-y-2">
+          <Textarea
+            value={value}
+            onChange={(e) => onUpdate(keyId, language.id, e.target.value)}
+            placeholder="Enter translation..."
+            className="min-h-20 text-sm"
+            autoFocus
+            data-testid={`input-translation-${keyId}-${language.id}`}
+          />
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="outline"
+              className={statusColors[status as keyof typeof statusColors]}
+            >
+              {status.replace("_", " ")}
+            </Badge>
+            <div className="flex-1" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCancel}
+              disabled={isSaving}
+              data-testid={`button-cancel-${keyId}-${language.id}`}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveClick}
+              disabled={isSaving}
+              data-testid={`button-save-${keyId}-${language.id}`}
+            >
+              {isSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
+              ) : (
+                <Check className="h-3.5 w-3.5 mr-2" />
+              )}
+              Save
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div
+            onClick={handleEditStart}
+            className="cursor-text min-h-12 flex items-center p-2 rounded-md hover-elevate"
+            data-testid={`text-translation-${keyId}-${language.id}`}
+          >
+            {hasValue ? (
+              <HighlightedText text={value} />
+            ) : (
+              <span className="text-sm text-destructive">Empty</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Badge
+              variant="outline"
+              className={statusColors[status as keyof typeof statusColors]}
+            >
+              {status.replace("_", " ")}
+            </Badge>
+            <div className="flex-1" />
+            {!isDefault && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onAISuggest(keyId, language.id)}
+                disabled={isSuggesting}
+                data-testid={`button-ai-suggest-${keyId}-${language.id}`}
+              >
+                {isSuggesting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 mr-2" />
+                )}
+                AI
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TranslationEditor() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [translationData, setTranslationData] = useState<TranslationData>({});
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [savingStates, setSavingStates] = useState<Record<string, boolean>>({});
+  const [suggestingStates, setSuggestingStates] = useState<Record<string, boolean>>({});
 
   const { data: languages } = useQuery<ProjectLanguage[]>({
     queryKey: ["/api/projects", id, "languages"],
@@ -62,7 +219,6 @@ export default function TranslationEditor() {
     enabled: !!id,
   });
 
-  // Initialize translation data when translations load
   useEffect(() => {
     if (translations) {
       const data: TranslationData = {};
@@ -102,10 +258,6 @@ export default function TranslationEditor() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "translations"] });
-      toast({
-        title: "Success",
-        description: "Translation saved",
-      });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -132,12 +284,6 @@ export default function TranslationEditor() {
       const response = await apiRequest("POST", `/api/translations/${translationId}/ai-suggest`, {});
       return await response.json();
     },
-    onSuccess: (data: { suggestion: string }) => {
-      toast({
-        title: "Translation Suggested",
-        description: "AI suggestion added to the field",
-      });
-    },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
@@ -158,38 +304,146 @@ export default function TranslationEditor() {
     },
   });
 
-  const updateTranslation = (
-    keyId: string,
-    languageId: string,
-    field: "value" | "status",
-    value: string
-  ) => {
+  const updateTranslation = (keyId: string, languageId: string, value: string) => {
     setTranslationData((prev) => ({
       ...prev,
       [keyId]: {
         ...prev[keyId],
         [languageId]: {
           ...prev[keyId]?.[languageId],
-          [field]: value,
+          value,
         },
       },
     }));
   };
 
-  const handleSave = (keyId: string, languageId: string) => {
+  const handleSave = async (keyId: string, languageId: string) => {
     const data = translationData[keyId]?.[languageId];
-    if (data && data.value) {
-      saveTranslation.mutate({
+    const saveKey = `${keyId}-${languageId}`;
+    setSavingStates((prev) => ({ ...prev, [saveKey]: true }));
+
+    try {
+      await saveTranslation.mutateAsync({
         keyId,
         languageId,
-        value: data.value,
-        status: data.status || "draft",
-        translationId: data.id,
+        value: data?.value || "",
+        status: data?.status || "draft",
+        translationId: data?.id,
       });
+      toast({
+        title: "Saved",
+        description: "Translation saved successfully",
+      });
+    } finally {
+      setSavingStates((prev) => ({ ...prev, [saveKey]: false }));
     }
   };
 
-  const defaultLanguage = languages?.find((l) => l.isDefault);
+  const handleAISuggest = async (keyId: string, languageId: string) => {
+    const defaultLanguage = languages?.find((l) => l.isDefault);
+    if (!defaultLanguage) {
+      toast({
+        title: "Error",
+        description: "No default language set",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const sourceText = translationData[keyId]?.[defaultLanguage.id]?.value;
+    if (!sourceText) {
+      toast({
+        title: "Source text required",
+        description: `Please add a translation in ${defaultLanguage.languageName} first`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const suggestKey = `${keyId}-${languageId}`;
+    setSuggestingStates((prev) => ({ ...prev, [suggestKey]: true }));
+
+    try {
+      let translationId = translationData[keyId]?.[languageId]?.id;
+
+      if (!translationId) {
+        const response = await apiRequest("POST", "/api/translations", {
+          keyId,
+          languageId,
+          value: "",
+          status: "draft",
+        });
+        const newTranslation = await response.json();
+        translationId = newTranslation.id;
+
+        setTranslationData((prev) => ({
+          ...prev,
+          [keyId]: {
+            ...prev[keyId],
+            [languageId]: {
+              id: translationId,
+              value: "",
+              status: "draft",
+            },
+          },
+        }));
+      }
+
+      if (!translationId) {
+        toast({
+          title: "Error",
+          description: "Unable to create translation record",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const result = await suggestTranslation.mutateAsync(translationId);
+      if (result.suggestion) {
+        updateTranslation(keyId, languageId, result.suggestion);
+        toast({
+          title: "AI Suggestion",
+          description: "Translation suggestion added",
+        });
+      }
+    } catch (error) {
+    } finally {
+      setSuggestingStates((prev) => ({ ...prev, [suggestKey]: false }));
+    }
+  };
+
+  const toggleKeySelection = (keyId: string) => {
+    setSelectedKeys((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(keyId)) {
+        newSet.delete(keyId);
+      } else {
+        newSet.add(keyId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleAllKeys = () => {
+    if (selectedKeys.size === filteredKeys.length) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(filteredKeys.map((k) => k.id)));
+    }
+  };
+
+  const filteredKeys = keys?.filter((key) =>
+    key.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    key.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
+
+  const totalKeys = keys?.length || 0;
+  const translatedKeys = keys?.filter((key) => {
+    const hasAllTranslations = languages?.every((lang) =>
+      translationData[key.id]?.[lang.id]?.value?.trim()
+    );
+    return hasAllTranslations;
+  }).length || 0;
 
   if (keysLoading) {
     return (
@@ -202,234 +456,104 @@ export default function TranslationEditor() {
 
   if (!keys || keys.length === 0) {
     return (
-      <Card>
-        <CardContent className="py-16 text-center">
-          <p className="text-muted-foreground">No translation keys available</p>
-        </CardContent>
-      </Card>
+      <div className="py-16 text-center">
+        <p className="text-muted-foreground">No translation keys available</p>
+      </div>
     );
   }
 
-  const currentKey = selectedKey ? keys.find((k) => k.id === selectedKey) : keys[0];
-  const currentKeyId = currentKey?.id || keys[0]?.id;
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-semibold mb-2">Translation Editor</h1>
-        <p className="text-muted-foreground">
-          Translate your content side-by-side across all languages
-        </p>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Translation Editor</h1>
+          <p className="text-sm text-muted-foreground">
+            {totalKeys} keys · {translatedKeys} fully translated
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search keys..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-64"
+              data-testid="input-search"
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="grid lg:grid-cols-4 gap-6">
-        {/* Key Selector */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-base">Translation Keys</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="space-y-1">
-              {keys.map((key) => (
-                <button
-                  key={key.id}
-                  onClick={() => setSelectedKey(key.id)}
-                  className={`w-full text-left px-4 py-2 text-sm font-mono hover-elevate ${
-                    currentKeyId === key.id ? "bg-accent" : ""
-                  }`}
-                  data-testid={`button-select-key-${key.id}`}
-                >
-                  {key.key}
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Translation Panel */}
-        <div className="lg:col-span-3 space-y-4">
-          {currentKey && (
-            <>
-              <Card>
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="font-mono text-lg">{currentKey.key}</CardTitle>
-                      {currentKey.description && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {currentKey.description}
-                        </p>
-                      )}
-                    </div>
+      <div className="border rounded-lg overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={selectedKeys.size === filteredKeys.length && filteredKeys.length > 0}
+                  onCheckedChange={toggleAllKeys}
+                  data-testid="checkbox-select-all"
+                />
+              </TableHead>
+              <TableHead className="min-w-48">Key</TableHead>
+              {languages?.map((lang) => (
+                <TableHead key={lang.id} className="min-w-64">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono">{lang.languageCode}</span>
+                    <span className="text-muted-foreground font-normal">
+                      {lang.languageName}
+                    </span>
+                    {lang.isDefault && (
+                      <Badge variant="outline" className="text-xs">
+                        Default
+                      </Badge>
+                    )}
                   </div>
-                </CardHeader>
-              </Card>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                {languages?.map((lang) => {
-                  const translationInfo = translationData[currentKeyId]?.[lang.id];
-                  const value = translationInfo?.value || "";
-                  const status = translationInfo?.status || "draft";
-                  const isDefault = lang.isDefault;
-
-                  return (
-                    <Card key={lang.id} data-testid={`card-translation-${lang.id}`}>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-sm">{lang.languageCode}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {lang.languageName}
-                            </span>
-                            {isDefault && (
-                              <Badge variant="outline" className="text-xs">
-                                Default
-                              </Badge>
-                            )}
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className={statusColors[status as keyof typeof statusColors]}
-                          >
-                            {status.replace("_", " ")}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Textarea
-                          value={value}
-                          onChange={(e) =>
-                            updateTranslation(currentKeyId, lang.id, "value", e.target.value)
-                          }
-                          placeholder={`Enter ${lang.languageName} translation...`}
-                          className="min-h-24"
-                          data-testid={`input-translation-${lang.id}`}
-                        />
-
-                        <div className="flex items-center gap-2">
-                          <Select
-                            value={status}
-                            onValueChange={(val) =>
-                              updateTranslation(currentKeyId, lang.id, "status", val)
-                            }
-                          >
-                            <SelectTrigger className="flex-1" data-testid={`select-status-${lang.id}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {statusOptions.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          {!isDefault && defaultLanguage && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => {
-                                const translationInfo = translationData[currentKeyId]?.[lang.id];
-                                const sourceText = translationData[currentKeyId]?.[defaultLanguage.id]?.value;
-                                
-                                if (!sourceText) {
-                                  toast({
-                                    title: "Source text required",
-                                    description: `Please add a translation in ${defaultLanguage.languageName} first`,
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-
-                                let translationId = translationInfo?.id;
-                                
-                                if (!translationId) {
-                                  try {
-                                    const response = await apiRequest("POST", "/api/translations", {
-                                      keyId: currentKeyId,
-                                      languageId: lang.id,
-                                      value: "",
-                                      status: "draft",
-                                    });
-                                    const newTranslation = await response.json();
-                                    translationId = newTranslation.id;
-                                    
-                                    setTranslationData((prev) => ({
-                                      ...prev,
-                                      [currentKeyId]: {
-                                        ...prev[currentKeyId],
-                                        [lang.id]: {
-                                          id: translationId,
-                                          value: "",
-                                          status: "draft",
-                                        },
-                                      },
-                                    }));
-                                  } catch (error) {
-                                    toast({
-                                      title: "Error",
-                                      description: "Failed to create translation",
-                                      variant: "destructive",
-                                    });
-                                    return;
-                                  }
-                                }
-
-                                if (!translationId) {
-                                  toast({
-                                    title: "Error",
-                                    description: "Unable to get translation ID",
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-
-                                suggestTranslation.mutate(
-                                  translationId,
-                                  {
-                                    onSuccess: (data) => {
-                                      if (data.suggestion) {
-                                        updateTranslation(
-                                          currentKeyId,
-                                          lang.id,
-                                          "value",
-                                          data.suggestion
-                                        );
-                                      }
-                                    },
-                                  }
-                                );
-                              }}
-                              disabled={suggestTranslation.isPending}
-                              data-testid={`button-suggest-${lang.id}`}
-                            >
-                              {suggestTranslation.isPending ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Sparkles className="h-3 w-3" />
-                              )}
-                            </Button>
-                          )}
-
-                          <Button
-                            onClick={() => handleSave(currentKeyId, lang.id)}
-                            disabled={!value || saveTranslation.isPending}
-                            size="sm"
-                            data-testid={`button-save-${lang.id}`}
-                          >
-                            <Save className="mr-2 h-4 w-4" />
-                            Save
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredKeys.map((key) => (
+              <TableRow key={key.id} data-testid={`row-key-${key.id}`}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedKeys.has(key.id)}
+                    onCheckedChange={() => toggleKeySelection(key.id)}
+                    data-testid={`checkbox-key-${key.id}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <div>
+                    <div className="font-mono text-sm font-medium">{key.key}</div>
+                    {key.description && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {key.description}
+                      </div>
+                    )}
+                  </div>
+                </TableCell>
+                {languages?.map((lang) => (
+                  <TableCell key={lang.id} className="align-top">
+                    <TranslationCell
+                      keyId={key.id}
+                      translationKey={key}
+                      language={lang}
+                      translationData={translationData}
+                      onUpdate={updateTranslation}
+                      onSave={handleSave}
+                      onAISuggest={handleAISuggest}
+                      isDefault={!!lang.isDefault}
+                      isSaving={savingStates[`${key.id}-${lang.id}`] || false}
+                      isSuggesting={suggestingStates[`${key.id}-${lang.id}`] || false}
+                    />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </div>
   );
