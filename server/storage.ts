@@ -7,6 +7,7 @@ import {
   translations,
   projectMembers,
   documents,
+  translationMemory,
   type User,
   type UpsertUser,
   type Project,
@@ -21,6 +22,8 @@ import {
   type InsertProjectMember,
   type Document,
   type InsertDocument,
+  type TranslationMemory,
+  type InsertTranslationMemory,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -69,6 +72,10 @@ export interface IStorage {
   getProjectDocuments(projectId: string): Promise<Document[]>;
   updateDocument(id: string, updates: Partial<InsertDocument>): Promise<Document>;
   deleteDocument(id: string): Promise<void>;
+
+  // Translation Memory operations
+  upsertTranslationMemory(memory: InsertTranslationMemory): Promise<TranslationMemory>;
+  findTranslationMemorySuggestion(sourceText: string, targetLanguageCode: string): Promise<TranslationMemory | undefined>;
 
   // Stats
   getUserStats(userId: string): Promise<{
@@ -339,6 +346,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Stats
+  async upsertTranslationMemory(memory: InsertTranslationMemory): Promise<TranslationMemory> {
+    const [result] = await db
+      .insert(translationMemory)
+      .values(memory)
+      .onConflictDoUpdate({
+        target: [translationMemory.sourceText, translationMemory.targetLanguageCode],
+        set: {
+          translatedText: memory.translatedText,
+          usageCount: sql`${translationMemory.usageCount} + 1`,
+          lastUsedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async findTranslationMemorySuggestion(
+    sourceText: string,
+    targetLanguageCode: string
+  ): Promise<TranslationMemory | undefined> {
+    const [result] = await db
+      .select()
+      .from(translationMemory)
+      .where(
+        and(
+          eq(translationMemory.sourceText, sourceText),
+          eq(translationMemory.targetLanguageCode, targetLanguageCode)
+        )
+      )
+      .limit(1);
+    return result;
+  }
+
   async getUserStats(userId: string): Promise<{
     totalProjects: number;
     totalLanguages: number;

@@ -226,6 +226,27 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type Document = typeof documents.$inferSelect;
 
+// Translation Memory - stores approved translations for reuse across projects
+export const translationMemory = pgTable("translation_memory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceText: text("source_text").notNull(), // original text from default language
+  targetLanguageCode: varchar("target_language_code", { length: 10 }).notNull(), // e.g., "fr", "es"
+  translatedText: text("translated_text").notNull(), // the approved translation
+  usageCount: integer("usage_count").notNull().default(1), // how many times this has been used
+  lastUsedAt: timestamp("last_used_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_tm_source_target").on(table.sourceText, table.targetLanguageCode),
+]);
+
+export const insertTranslationMemorySchema = createInsertSchema(translationMemory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTranslationMemory = z.infer<typeof insertTranslationMemorySchema>;
+export type TranslationMemory = typeof translationMemory.$inferSelect;
+
 // User relations
 export const usersRelations = relations(users, ({ many }) => ({
   ownedProjects: many(projects),
