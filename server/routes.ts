@@ -707,6 +707,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Simple passthrough for now - will integrate Google Translate API if available
       // For MVP, just return a placeholder response
+      
       res.json({
         translation: `[${targetLanguage}] ${text}`,
         confidence: 0.8,
