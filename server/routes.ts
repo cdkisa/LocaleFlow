@@ -817,11 +817,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let shouldFlatten = false;
         
         if (hasObjectValue) {
-          // Check if this is a namespace structure or language-wrapped structure
-          // Namespace structure: all nested values eventually lead to strings
-          if (isNamespaceStructure(data)) {
+          // Check if any top-level key matches a configured language code
+          // If yes, it's a language-wrapped format; otherwise, check if it's namespace structure
+          const hasLanguageCode = entries.some(([key, value]) => 
+            typeof value === "object" && !Array.isArray(value) && value !== null && languageMap.has(key)
+          );
+          
+          if (hasLanguageCode) {
+            // At least one top-level key is a recognized language code
+            isNestedFormat = true;
+          } else if (isNamespaceStructure(data)) {
+            // No language codes found, and structure leads to strings - it's a namespace format
             shouldFlatten = true;
           } else {
+            // Has objects but doesn't match namespace pattern - treat as nested format
+            // (This handles mixed metadata or malformed data)
             isNestedFormat = true;
           }
         }
