@@ -1,0 +1,78 @@
+{
+  "common": {
+    "settings": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "save": "Save",
+    "cancel": "Cancel",
+    "createdAt": "Created At",
+    "createdBy": "Created By",
+    "updatedAt": "Updated At",
+    "updatedBy": "Updated By",
+    "unknown": "Unknown",
+    "enable": "Enable",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "disable": "Disable",
+    "all": "All",
+    "copy": "Copy",
+    "lastUpdated": "Last Updated"
+  },
+  "redirect": {
+    "hangTight": "Hang Tight",
+    "weAreRedirectingYouToTheSignInPage": "We are redirecting you to the sign in page"
+  },
+  "weightedAttributes": {
+    "title": "Attributes",
+    "addAttribute": "Add Attribute",
+    "grid": {
+      "title": "Attributes",
+      "description": "Manage attributes."
+    },
+    "createAttribute": "Create Attribute",
+    "editAttribute": "Edit Attribute",
+    "dataType": "Data Type",
+    "dataTypeHint": "Data type of the weighted attribute",
+    "category": "Category",
+    "categoryHint": "Category of the weighted attribute",
+    "name": "Name",
+    "nameHint": "Name of the weighted attribute",
+    "description": "Description",
+    "descriptionHint": "Description of the weighted attribute",
+    "defaultWeight": "Default Weight",
+    "defaultWeightHint": "Default weight of the weighted attribute",
+    "valueAdded": "Value Added",
+    "valueAddedHint": "Estimated value added given above base rent",
+    "disableAttribute": "Disable Attribute",
+    "areYouSureToDisable": "Are you sure you want to disable \"{{name}}\"?",
+    "info": "Info",
+    "enableAttribute": "Enable Attribute",
+    "areYouSureToEnable": "Are you sure you want to enable \"{{name}}\"?",
+    "failedToEnable": "Failed to enable attribute \"{{name}}\"",
+    "failedToDisable": "Failed to disable attribute \"{{name}}\"",
+    "failedToUpdate": "Failed to update attribute \"{{name}}\"",
+    "failedToCreate": "Failed to create attribute \"{{name}}\""
+  },
+  "glossary": {
+    "createTerm": "Create Term",
+    "editTerm": "Edit Term",
+    "deleteTerm": "Delete Term",
+    "term": "Term",
+    "definition": "Definition",
+    "context": "Context",
+    "example": "Example",
+    "category": "Category",
+    "relatedTerms": "Related Terms (comma-separated)",
+    "relatedTermsHint": "Related terms (comma-separated)",
+    "areYouSureToDelete": "Are you sure you want to delete \"{{term}}\"?",
+    "info": "Info"
+  },
+  "validation": {
+    "required": "{{field}} is required",
+    "invalid": "{{field}} is invalid",
+    "maxLength": "{{field}} must be at most {{max}} characters",
+    "mustBeNumber": "{{field}} must be a number",
+    "atLeast": "{{field}} must be at least {{min}}",
+    "atMost": "{{field}} must be at most {{max}}"
+  }
+}

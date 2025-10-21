@@ -200,19 +200,25 @@ export default function ImportTranslations() {
               <AlertDescription>
                 <div className="space-y-3">
                   <div>
-                    <strong>Flat Format (default language):</strong> Simple key-value pairs use the project's default language automatically.
+                    <strong>Flat Format:</strong> Simple key-value pairs use the project's default language.
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
                       {`{ "home.title": "Welcome", "home.subtitle": "Get Started" }`}
                     </code>
                   </div>
                   <div>
-                    <strong>Nested Format (single language):</strong> Wrap translations in language code. Auto-creates drafts for other languages.
+                    <strong>Namespace Format:</strong> Nested namespaces auto-flatten to dot-notation keys (common.settings).
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
-                      {`{ "en": { "home.title": "Welcome", "home.subtitle": "Get Started" } }`}
+                      {`{ "common": { "settings": "Settings", "theme": "Theme" } }`}
                     </code>
                   </div>
                   <div>
-                    <strong>Nested Format (multi-language):</strong> Import multiple languages at once.
+                    <strong>Language Format (single):</strong> Wrap in language code. Auto-creates drafts for other languages.
+                    <code className="text-xs block mt-1 p-2 bg-muted rounded">
+                      {`{ "en": { "home.title": "Welcome" } }`}
+                    </code>
+                  </div>
+                  <div>
+                    <strong>Language Format (multi):</strong> Import multiple languages at once.
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
                       {`{ "en": { "home.title": "Welcome" }, "fr": { "home.title": "Bienvenue" } }`}
                     </code>

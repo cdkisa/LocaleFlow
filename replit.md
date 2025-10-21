@@ -125,10 +125,11 @@ Preferred communication style: Simple, everyday language.
 - ESBuild for server bundling in production
 
 **Import/Export Formats:**
-- JSON - Supports both flat and nested formats:
+- JSON - Supports multiple formats with auto-detection:
   - Flat format: `{ "key": "value" }` - uses project's default language
-  - Nested format: `{ "en": { "key": "value" } }` - explicit language codes
-  - Multi-language: `{ "en": {...}, "fr": {...} }` - multiple languages at once
+  - Namespace format: `{ "common": { "settings": "Settings" } }` - auto-flattens to dot-notation (common.settings)
+  - Language format (single): `{ "en": { "key": "value" } }` - explicit language code
+  - Language format (multi): `{ "en": {...}, "fr": {...} }` - multiple languages at once
 - CSV - Flat structure with key, language_code, and value columns
 - PapaParse library for robust CSV parsing with quote/comma handling
 - Zod validation with row-level error reporting
@@ -218,3 +219,18 @@ Preferred communication style: Simple, everyday language.
   - Directs users to set default in project settings or use nested format
 - **UI Updates**: Import page documentation now shows all three supported formats (flat, single-language nested, multi-language nested)
 - **Use Case**: Supports teams that organize translations in language-specific folders (e.g., `en/translations.json`, `fr/translations.json`) and don't include language code in file content
+
+### Namespace JSON Import Format (Completed - October 21, 2025)
+- **Namespace Format Support**: Added auto-flattening for nested namespace structures commonly used in i18n libraries
+  - Namespace format: `{ "common": { "settings": "Settings", "language": "Language" } }` - auto-flattens to dot-notation keys
+  - Creates keys like `common.settings`, `common.language`, `redirect.hangTight`
+  - Supports deeply nested structures: `{ "app": { "header": { "title": "Welcome" } } }` → `app.header.title`
+- **Smart Format Detection**: Distinguishes between namespace structures and language-wrapped formats
+  - Namespace structure: all nested values eventually lead to strings (recursive check)
+  - Language structure: top-level keys are language codes with nested translation objects
+  - Mixed metadata: gracefully skips non-object top-level values with warnings
+- **Recursive Flattening**: `flattenObject` helper recursively processes nested objects
+  - Builds dot-notation keys from nested paths
+  - Skips non-string values (numbers, booleans, arrays, null) with warnings
+  - Works with arbitrary nesting depth
+- **Use Case**: Supports teams using popular i18n frameworks (react-i18next, vue-i18n, etc.) that organize translations by namespace/feature instead of language

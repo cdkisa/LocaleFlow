@@ -759,6 +759,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         existingTranslations.map(t => [`${t.keyId}:${t.languageId}`, t])
       );
 
+      // Helper function to flatten nested objects into dot-notation keys
+      const flattenObject = (obj: any, prefix = ''): Record<string, string> => {
+        const result: Record<string, string> = {};
+        
+        for (const [key, value] of Object.entries(obj)) {
+          const newKey = prefix ? `${prefix}.${key}` : key;
+          
+          if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+            // Recursively flatten nested objects
+            Object.assign(result, flattenObject(value, newKey));
+          } else if (typeof value === 'string') {
+            // Add string values to result
+            result[newKey] = value;
+          }
+          // Skip non-string primitive values (numbers, booleans, arrays, null)
+        }
+        
+        return result;
+      };
+
+      // Helper to check if an object contains only nested string values (namespace structure)
+      const isNamespaceStructure = (obj: any): boolean => {
+        for (const value of Object.values(obj)) {
+          if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+            // Check if this nested object eventually leads to strings
+            if (!Object.values(value).every(v => 
+              typeof v === 'string' || (typeof v === 'object' && !Array.isArray(v) && v !== null && isNamespaceStructure(v))
+            )) {
+              return false;
+            }
+          } else if (typeof value !== 'string') {
+            return false;
+          }
+        }
+        return true;
+      };
+
       if (format === "json") {
         // Validate JSON structure
         if (typeof data !== "object" || Array.isArray(data)) {
@@ -767,18 +804,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        // Detect format: flat (keys only) or nested (with language codes)
-        // Flat format: { "home.title": "Welcome", "home.subtitle": "Get Started" }
-        // Nested format: { "en": { "home.title": "Welcome" }, "fr": { "home.titre": "Bienvenue" } }
-        // Detection: flat = ALL values are strings; nested = ANY value is an object
+        // Detect format type
+        // 1. Flat format: { "home.title": "Welcome" } - all values are strings
+        // 2. Namespace format: { "common": { "settings": "Settings" } } - nested objects with string leaves
+        // 3. Language format: { "en": { "home.title": "Welcome" } } - language codes at top level
         const entries = Object.entries(data);
         const hasObjectValue = entries.some(([_, value]) => 
           typeof value === "object" && !Array.isArray(value) && value !== null
         );
-        const isNestedFormat = hasObjectValue;
+        
+        let isNestedFormat = false;
+        let shouldFlatten = false;
+        
+        if (hasObjectValue) {
+          // Check if this is a namespace structure or language-wrapped structure
+          // Namespace structure: all nested values eventually lead to strings
+          if (isNamespaceStructure(data)) {
+            shouldFlatten = true;
+          } else {
+            isNestedFormat = true;
+          }
+        }
 
         if (!isNestedFormat) {
-          // Flat format - use default language
+          // Flat or namespace format - use default language
           const defaultLanguage = languages.find(l => l.isDefault);
           if (!defaultLanguage) {
             return res.status(400).json({ 
@@ -786,7 +835,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
 
-          const translations = data as Record<string, string>;
+          // Flatten if needed (namespace structure), otherwise use as-is (flat format)
+          const translations = shouldFlatten ? flattenObject(data) : data as Record<string, string>;
           const languageId = defaultLanguage.id;
 
           for (const [key, value] of Object.entries(translations)) {
