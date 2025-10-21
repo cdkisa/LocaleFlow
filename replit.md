@@ -125,8 +125,11 @@ Preferred communication style: Simple, everyday language.
 - ESBuild for server bundling in production
 
 **Import/Export Formats:**
-- JSON - Nested object structure with language codes as keys
-- CSV - Flat structure with key, language code, and translation columns
+- JSON - Supports both flat and nested formats:
+  - Flat format: `{ "key": "value" }` - uses project's default language
+  - Nested format: `{ "en": { "key": "value" } }` - explicit language codes
+  - Multi-language: `{ "en": {...}, "fr": {...} }` - multiple languages at once
+- CSV - Flat structure with key, language_code, and value columns
 - PapaParse library for robust CSV parsing with quote/comma handling
 - Zod validation with row-level error reporting
 
@@ -202,3 +205,16 @@ Preferred communication style: Simple, everyday language.
   - Auto-draft loop only iterates over touched keys, not entire project
 - **UI Documentation**: Updated import page with clearer information about single-language imports and multi-language format expectations
 - **Performance**: Sequential writes for auto-draft creation (could be optimized with batching for larger projects)
+
+### Flat JSON Import Format (Completed - October 21, 2025)
+- **Flat Format Support**: Added automatic detection and support for flat JSON imports without language code wrapper
+  - Flat format: `{ "home.title": "Welcome", "home.subtitle": "Get Started" }` - automatically uses project's default language
+  - Nested format: `{ "en": { "home.title": "Welcome" } }` - explicit language code (backward compatible)
+- **Auto-Detection Logic**: System detects format by checking if any top-level values are objects
+  - If all values are strings → flat format, use default language
+  - If any values are objects → nested format, process by language code
+- **Default Language Requirement**: Flat format requires project to have a default language configured
+  - Returns clear error if no default language is set
+  - Directs users to set default in project settings or use nested format
+- **UI Updates**: Import page documentation now shows all three supported formats (flat, single-language nested, multi-language nested)
+- **Use Case**: Supports teams that organize translations in language-specific folders (e.g., `en/translations.json`, `fr/translations.json`) and don't include language code in file content

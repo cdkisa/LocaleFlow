@@ -198,20 +198,23 @@ export default function ImportTranslations() {
             <Alert className="mt-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div>
-                    <strong>JSON Format:</strong> Use nested objects with language codes and key-value pairs.
-                  </div>
-                  <div>
-                    <strong>Multi-language:</strong>{" "}
+                    <strong>Flat Format (default language):</strong> Simple key-value pairs use the project's default language automatically.
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
-                      {`{ "en": { "home.title": "Welcome" }, "fr": { "home.title": "Bienvenue" } }`}
+                      {`{ "home.title": "Welcome", "home.subtitle": "Get Started" }`}
                     </code>
                   </div>
                   <div>
-                    <strong>Single-language:</strong> Import one language and draft translations will be auto-created for all other project languages.
+                    <strong>Nested Format (single language):</strong> Wrap translations in language code. Auto-creates drafts for other languages.
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
                       {`{ "en": { "home.title": "Welcome", "home.subtitle": "Get Started" } }`}
+                    </code>
+                  </div>
+                  <div>
+                    <strong>Nested Format (multi-language):</strong> Import multiple languages at once.
+                    <code className="text-xs block mt-1 p-2 bg-muted rounded">
+                      {`{ "en": { "home.title": "Welcome" }, "fr": { "home.title": "Bienvenue" } }`}
                     </code>
                   </div>
                 </div>

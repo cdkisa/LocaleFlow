@@ -763,22 +763,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Validate JSON structure
         if (typeof data !== "object" || Array.isArray(data)) {
           return res.status(400).json({ 
-            message: "Invalid JSON format. Expected nested object: { \"en\": { \"key\": \"value\" } }" 
+            message: "Invalid JSON format. Expected object with key-value pairs or nested by language: { \"key\": \"value\" } or { \"en\": { \"key\": \"value\" } }" 
           });
         }
 
-        // Process nested JSON format: { "en": { "key1": "value1" }, "fr": { "key1": "valeur1" } }
-        for (const [langCode, translations] of Object.entries(data as Record<string, Record<string, string>>)) {
-          const languageId = languageMap.get(langCode);
-          if (!languageId) {
-            warnings.push(`Unknown language code '${langCode}' - skipped all translations for this language`);
-            continue;
+        // Detect format: flat (keys only) or nested (with language codes)
+        // Flat format: { "home.title": "Welcome", "home.subtitle": "Get Started" }
+        // Nested format: { "en": { "home.title": "Welcome" }, "fr": { "home.titre": "Bienvenue" } }
+        // Detection: flat = ALL values are strings; nested = ANY value is an object
+        const entries = Object.entries(data);
+        const hasObjectValue = entries.some(([_, value]) => 
+          typeof value === "object" && !Array.isArray(value) && value !== null
+        );
+        const isNestedFormat = hasObjectValue;
+
+        if (!isNestedFormat) {
+          // Flat format - use default language
+          const defaultLanguage = languages.find(l => l.isDefault);
+          if (!defaultLanguage) {
+            return res.status(400).json({ 
+              message: "No default language set for this project. Please set a default language in project settings or use nested format with language codes." 
+            });
           }
 
-          if (typeof translations !== "object" || Array.isArray(translations)) {
-            errors.push(`Invalid translations for language '${langCode}'. Expected object with key-value pairs`);
-            continue;
+          const translations = data as Record<string, string>;
+          const languageId = defaultLanguage.id;
+
+          for (const [key, value] of Object.entries(translations)) {
+            if (typeof value !== "string") {
+              warnings.push(`Non-string value for key '${key}' - skipped`);
+              continue;
+            }
+
+            try {
+              // Get or create translation key
+              let translationKey = keyMap.get(key);
+              if (!translationKey) {
+                translationKey = await storage.createTranslationKey({
+                  projectId,
+                  key,
+                  description: null,
+                });
+                keyMap.set(key, translationKey);
+              }
+
+              // Create or update translation
+              const lookupKey = `${translationKey.id}:${languageId}`;
+              const existingTranslation = translationMap.get(lookupKey);
+
+              if (existingTranslation) {
+                await storage.updateTranslation(existingTranslation.id, {
+                  value,
+                  status: "draft",
+                });
+              } else {
+                const newTranslation = await storage.createTranslation({
+                  keyId: translationKey.id,
+                  languageId,
+                  value,
+                  status: "draft",
+                  translatedBy: userId,
+                });
+                translationMap.set(lookupKey, newTranslation);
+              }
+              
+              // Track this key as touched during import
+              touchedKeyIds.add(translationKey.id);
+              importedCount++;
+            } catch (err) {
+              errors.push(`Failed to import '${key}': ${err instanceof Error ? err.message : String(err)}`);
+            }
           }
+        } else {
+          // Nested format - process by language code
+          for (const [langCode, translations] of Object.entries(data as Record<string, any>)) {
+            // Skip non-object top-level values (metadata, version numbers, etc.)
+            if (typeof translations !== "object" || Array.isArray(translations) || translations === null) {
+              warnings.push(`Skipping non-object top-level key '${langCode}' (metadata or invalid format)`);
+              continue;
+            }
+
+            const languageId = languageMap.get(langCode);
+            if (!languageId) {
+              warnings.push(`Unknown language code '${langCode}' - skipped all translations for this language`);
+              continue;
+            }
 
           for (const [key, value] of Object.entries(translations)) {
             if (typeof value !== "string") {
@@ -825,6 +894,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               errors.push(`Failed to import '${key}' for '${langCode}': ${err instanceof Error ? err.message : String(err)}`);
             }
           }
+        }
         }
       } else if (format === "csv") {
         // Parse CSV with proper quote/comma handling
