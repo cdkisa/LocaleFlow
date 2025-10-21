@@ -44,7 +44,12 @@ Preferred communication style: Simple, everyday language.
 
 ### Import/Export Formats
 
-**JSON:** Supports flat format (uses default language), namespace format (auto-flattens nested objects), single-language, and multi-language formats with auto-detection.
+**JSON Import:** Supports flat format (uses default language), namespace format (auto-flattens nested objects), single-language, and multi-language formats with auto-detection.
+**JSON Export:** 
+- Flat format: `{ "en": { "greeting.hello": "Hello" } }` (default)
+- Nested namespace format: `{ "en": { "greeting": { "hello": "Hello" } } }` (optional)
+- User can toggle nested namespaces via checkbox in export UI
+- Handles edge cases: nested children take priority when both flat and nested keys exist
 **CSV:** Flat structure with `key`, `language_code`, `value` columns.
 **Validation:** Zod for row-level error reporting, PapaParse for robust CSV parsing.
 
