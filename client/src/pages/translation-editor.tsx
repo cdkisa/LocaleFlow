@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Save, Sparkles } from "lucide-react";
+import { Save, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -404,7 +404,11 @@ export default function TranslationEditor() {
                               disabled={suggestTranslation.isPending}
                               data-testid={`button-suggest-${lang.id}`}
                             >
-                              <Sparkles className="h-3 w-3" />
+                              {suggestTranslation.isPending ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Sparkles className="h-3 w-3" />
+                              )}
                             </Button>
                           )}
 
