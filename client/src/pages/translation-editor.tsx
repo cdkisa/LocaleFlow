@@ -44,12 +44,12 @@ const statusColors = {
 function HighlightedText({ text }: { text: string }) {
   if (!text) return null;
 
-  const parts = text.split(/(\{[^}]+\})/g);
+  const parts = text.split(/(\{\{[^}]+\}\})/g); // Adjusted regex to capture the full placeholder including brackets
 
   return (
     <div className="flex flex-wrap items-center gap-1">
       {parts.map((part, index) => {
-        if (part.match(/\{[^}]+\}/)) {
+        if (part.startsWith('{{') && part.endsWith('}}')) { // Check the full placeholder token
           return (
             <Badge
               key={index}
@@ -432,7 +432,7 @@ export default function TranslationEditor() {
           status: "in_review",
           translationId,
         });
-        
+
         setTranslationData((prev) => ({
           ...prev,
           [keyId]: {
@@ -444,7 +444,7 @@ export default function TranslationEditor() {
             },
           },
         }));
-        
+
         toast({
           title: "AI Suggestion Applied",
           description: "Translation saved with status 'In Review'",
@@ -478,8 +478,8 @@ export default function TranslationEditor() {
     }
 
     const selectedKeysList = Array.from(selectedKeys);
-    const keysWithSource = selectedKeysList.filter(
-      (keyId) => translationData[keyId]?.[defaultLanguage.id]?.value?.trim()
+    const keysWithSource = selectedKeysList.filter((keyId) =>
+      translationData[keyId]?.[defaultLanguage.id]?.value?.trim(),
     );
 
     if (keysWithSource.length === 0) {
@@ -491,7 +491,8 @@ export default function TranslationEditor() {
       return;
     }
 
-    const totalTranslations = keysWithSource.length * nonDefaultLanguages.length;
+    const totalTranslations =
+      keysWithSource.length * nonDefaultLanguages.length;
     setIsBulkTranslating(true);
     setBulkProgress({ current: 0, total: totalTranslations });
 
@@ -503,7 +504,7 @@ export default function TranslationEditor() {
       for (const lang of nonDefaultLanguages) {
         try {
           const existingValue = translationData[keyId]?.[lang.id]?.value;
-          
+
           if (existingValue && existingValue.trim()) {
             completed++;
             setBulkProgress({ current: completed, total: totalTranslations });
@@ -545,7 +546,7 @@ export default function TranslationEditor() {
                 status: "in_review",
                 translationId,
               });
-              
+
               setTranslationData((prev) => ({
                 ...prev,
                 [keyId]: {
@@ -557,7 +558,7 @@ export default function TranslationEditor() {
                   },
                 },
               }));
-              
+
               succeeded++;
             }
           }
@@ -572,9 +573,11 @@ export default function TranslationEditor() {
 
     setIsBulkTranslating(false);
     setBulkProgress({ current: 0, total: 0 });
-    
-    queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "translations"] });
-    
+
+    queryClient.invalidateQueries({
+      queryKey: ["/api/projects", id, "translations"],
+    });
+
     toast({
       title: "Bulk Translation Complete",
       description: `${succeeded} translations generated${failed > 0 ? `, ${failed} failed` : ""}`,
@@ -670,7 +673,8 @@ export default function TranslationEditor() {
               Clear
             </Button>
             <span className="text-sm text-muted-foreground">
-              {selectedKeys.size} {selectedKeys.size === 1 ? "key" : "keys"} selected
+              {selectedKeys.size} {selectedKeys.size === 1 ? "key" : "keys"}{" "}
+              selected
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -770,7 +774,8 @@ export default function TranslationEditor() {
                                 savingStates[`${key.id}-${lang.id}`] || false
                               }
                               isSuggesting={
-                                suggestingStates[`${key.id}-${lang.id}`] || false
+                                suggestingStates[`${key.id}-${lang.id}`] ||
+                                false
                               }
                             />
                           </TableCell>

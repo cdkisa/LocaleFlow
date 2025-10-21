@@ -15,6 +15,27 @@ import Papa from "papaparse";
 import OpenAI from "openai";
 import { getTranslationSuggestion } from "./openai";
 
+function convertToNestedObject(flatObj: Record<string, string>): Record<string, any> {
+  const result: Record<string, any> = {};
+  
+  for (const [key, value] of Object.entries(flatObj)) {
+    const parts = key.split('.');
+    let current = result;
+    
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!(part in current)) {
+        current[part] = {};
+      }
+      current = current[part];
+    }
+    
+    current[parts[parts.length - 1]] = value;
+  }
+  
+  return result;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
@@ -1176,7 +1197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export endpoint
   app.get("/api/projects/:id/export", isAuthenticated, async (req, res) => {
     try {
-      const { format, languages: languageFilter } = req.query;
+      const { format, languages: languageFilter, nested } = req.query;
       const projectId = req.params.id;
 
       const keys = await storage.getProjectKeys(projectId);
@@ -1188,17 +1209,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : languages;
 
       if (format === "json") {
-        // Nested JSON format: { "en": { "key1": "value1" }, "fr": { "key1": "valeur1" } }
-        const result: Record<string, Record<string, string>> = {};
+        const useNested = nested === "true";
+        const result: Record<string, Record<string, string> | Record<string, any>> = {};
         
         selectedLanguages.forEach(lang => {
-          result[lang.languageCode] = {};
+          const flatTranslations: Record<string, string> = {};
           keys.forEach(key => {
             const translation = translations.find(
               (t: Translation) => t.keyId === key.id && t.languageId === lang.id
             );
-            result[lang.languageCode][key.key] = translation?.value || "";
+            flatTranslations[key.key] = translation?.value || "";
           });
+          
+          result[lang.languageCode] = useNested 
+            ? convertToNestedObject(flatTranslations)
+            : flatTranslations;
         });
 
         res.setHeader("Content-Type", "application/json");
