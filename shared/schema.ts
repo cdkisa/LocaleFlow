@@ -9,6 +9,7 @@ import {
   text,
   integer,
   boolean,
+  unique,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -235,9 +236,11 @@ export const translationMemory = pgTable("translation_memory", {
   usageCount: integer("usage_count").notNull().default(1), // how many times this has been used
   lastUsedAt: timestamp("last_used_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("idx_tm_source_target").on(table.sourceText, table.targetLanguageCode),
-]);
+}, (table) => {
+  return {
+    sourceTargetUnique: unique("tm_source_target_unique").on(table.sourceText, table.targetLanguageCode),
+  };
+});
 
 export const insertTranslationMemorySchema = createInsertSchema(translationMemory).omit({
   id: true,
