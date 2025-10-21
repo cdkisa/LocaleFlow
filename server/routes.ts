@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import Papa from "papaparse";
 import OpenAI from "openai";
+import { getTranslationSuggestion } from "./openai";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -334,6 +335,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting translation:", error);
       res.status(500).json({ message: "Failed to delete translation" });
+    }
+  });
+
+  // AI translation suggestion endpoint
+  app.post("/api/translations/:id/ai-suggest", isAuthenticated, async (req: any, res) => {
+    try {
+      const translationId = req.params.id;
+
+      // Get the translation
+      const translation = await storage.getTranslation(translationId);
+      if (!translation) {
+        return res.status(404).json({ message: "Translation not found" });
+      }
+
+      // Get the translation key details
+      const translationKey = await storage.getTranslationKey(translation.keyId);
+      if (!translationKey) {
+        return res.status(404).json({ message: "Translation key not found" });
+      }
+
+      // Get project languages to find source and target
+      const languages = await storage.getProjectLanguages(translationKey.projectId);
+      const targetLanguage = languages.find(l => l.id === translation.languageId);
+      if (!targetLanguage) {
+        return res.status(404).json({ message: "Target language not found" });
+      }
+
+      // Find source language (prefer default, fallback to first language)
+      const defaultLang = languages.find(l => l.isDefault);
+      const sourceLang = defaultLang || languages.find(l => l.id !== translation.languageId);
+      if (!sourceLang) {
+        return res.status(400).json({ message: "No source language found. Please add at least one other language to the project." });
+      }
+
+      // Get all translations for this key to find source text
+      const allTranslations = await storage.getProjectTranslations(translationKey.projectId);
+      const sourceTranslation = allTranslations.find(
+        t => t.keyId === translation.keyId && t.languageId === sourceLang.id
+      );
+
+      if (!sourceTranslation) {
+        return res.status(400).json({ 
+          message: `No translation found for source language (${sourceLang.languageName}). Please add a translation in the source language first.` 
+        });
+      }
+
+      // Get AI suggestion
+      const suggestion = await getTranslationSuggestion({
+        keyName: translationKey.key,
+        description: translationKey.description || undefined,
+        sourceText: sourceTranslation.value,
+        sourceLangName: sourceLang.languageName,
+        targetLangName: targetLanguage.languageName,
+      });
+
+      res.json({ suggestion });
+    } catch (error) {
+      console.error("Error getting AI suggestion:", error);
+      res.status(500).json({ message: "Failed to get AI suggestion" });
     }
   });
 

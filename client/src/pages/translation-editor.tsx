@@ -128,13 +128,11 @@ export default function TranslationEditor() {
   });
 
   const suggestTranslation = useMutation({
-    mutationFn: async (params: {
-      text: string;
-      targetLanguage: string;
-    }) => {
-      return await apiRequest("POST", "/api/translate/suggest", params);
+    mutationFn: async (translationId: string) => {
+      const response = await apiRequest("POST", `/api/translations/${translationId}/ai-suggest`, {});
+      return await response.json();
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (data: { suggestion: string }) => {
       toast({
         title: "Translation Suggested",
         description: "AI suggestion added to the field",
@@ -331,29 +329,77 @@ export default function TranslationEditor() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                const sourceText =
-                                  translationData[currentKeyId]?.[defaultLanguage.id]?.value;
-                                if (sourceText) {
-                                  suggestTranslation.mutate(
-                                    {
-                                      text: sourceText,
-                                      targetLanguage: lang.languageCode,
-                                    },
-                                    {
-                                      onSuccess: (data: any) => {
-                                        if (data.translation) {
-                                          updateTranslation(
-                                            currentKeyId,
-                                            lang.id,
-                                            "value",
-                                            data.translation
-                                          );
-                                        }
-                                      },
-                                    }
-                                  );
+                              onClick={async () => {
+                                const translationInfo = translationData[currentKeyId]?.[lang.id];
+                                const sourceText = translationData[currentKeyId]?.[defaultLanguage.id]?.value;
+                                
+                                if (!sourceText) {
+                                  toast({
+                                    title: "Source text required",
+                                    description: `Please add a translation in ${defaultLanguage.languageName} first`,
+                                    variant: "destructive",
+                                  });
+                                  return;
                                 }
+
+                                let translationId = translationInfo?.id;
+                                
+                                if (!translationId) {
+                                  try {
+                                    const response = await apiRequest("POST", "/api/translations", {
+                                      keyId: currentKeyId,
+                                      languageId: lang.id,
+                                      value: "",
+                                      status: "draft",
+                                    });
+                                    const newTranslation = await response.json();
+                                    translationId = newTranslation.id;
+                                    
+                                    setTranslationData((prev) => ({
+                                      ...prev,
+                                      [currentKeyId]: {
+                                        ...prev[currentKeyId],
+                                        [lang.id]: {
+                                          id: translationId,
+                                          value: "",
+                                          status: "draft",
+                                        },
+                                      },
+                                    }));
+                                  } catch (error) {
+                                    toast({
+                                      title: "Error",
+                                      description: "Failed to create translation",
+                                      variant: "destructive",
+                                    });
+                                    return;
+                                  }
+                                }
+
+                                if (!translationId) {
+                                  toast({
+                                    title: "Error",
+                                    description: "Unable to get translation ID",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
+
+                                suggestTranslation.mutate(
+                                  translationId,
+                                  {
+                                    onSuccess: (data) => {
+                                      if (data.suggestion) {
+                                        updateTranslation(
+                                          currentKeyId,
+                                          lang.id,
+                                          "value",
+                                          data.suggestion
+                                        );
+                                      }
+                                    },
+                                  }
+                                );
                               }}
                               disabled={suggestTranslation.isPending}
                               data-testid={`button-suggest-${lang.id}`}
