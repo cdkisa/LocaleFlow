@@ -720,14 +720,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Import endpoint
   app.post("/api/projects/:id/import", isAuthenticated, async (req: any, res) => {
     try {
-      // Validate request body
+      // Validate request body - accept any data type, validate structure later
       const importSchema = z.object({
         format: z.enum(["json", "csv"]),
-        data: z.union([z.record(z.record(z.string())), z.string()]),
+        data: z.any(),
       });
 
       const validated = importSchema.safeParse(req.body);
       if (!validated.success) {
+        console.error("Import validation failed:", JSON.stringify(validated.error.errors, null, 2));
+        console.error("Received body:", JSON.stringify(req.body, null, 2));
         return res.status(400).json({ 
           message: "Invalid import data", 
           errors: validated.error.errors 
