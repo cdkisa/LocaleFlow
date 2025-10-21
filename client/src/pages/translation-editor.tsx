@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Sparkles, Loader2, Search, Check } from "lucide-react";
+import { Sparkles, Loader2, Search, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import type { ProjectLanguage, TranslationKey, Translation } from "@shared/schema";
+import type {
+  ProjectLanguage,
+  TranslationKey,
+  Translation,
+} from "@shared/schema";
 
 interface TranslationData {
   [keyId: string]: {
@@ -57,7 +61,11 @@ function HighlightedText({ text }: { text: string }) {
             </Badge>
           );
         }
-        return <span key={index} className="text-sm">{part}</span>;
+        return (
+          <span key={index} className="text-sm">
+            {part}
+          </span>
+        );
       })}
     </div>
   );
@@ -109,15 +117,15 @@ function TranslationCell({
   };
 
   return (
-    <div className="min-w-64 max-w-md">
+    <div className="min-w-64">
       {isEditing ? (
         <div className="space-y-2">
           <Textarea
             value={value}
             onChange={(e) => onUpdate(keyId, language.id, e.target.value)}
             placeholder="Enter translation..."
-            className="min-h-20 text-sm"
             autoFocus
+            rows={1}
             data-testid={`input-translation-${keyId}-${language.id}`}
           />
           <div className="flex items-center gap-2">
@@ -186,7 +194,6 @@ function TranslationCell({
                 ) : (
                   <Sparkles className="h-3.5 w-3.5 mr-2" />
                 )}
-                AI
               </Button>
             )}
           </div>
@@ -204,7 +211,11 @@ export default function TranslationEditor() {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [savingStates, setSavingStates] = useState<Record<string, boolean>>({});
-  const [suggestingStates, setSuggestingStates] = useState<Record<string, boolean>>({});
+  const [suggestingStates, setSuggestingStates] = useState<
+    Record<string, boolean>
+  >({});
+  const [isBulkTranslating, setIsBulkTranslating] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
 
   const { data: languages } = useQuery<ProjectLanguage[]>({
     queryKey: ["/api/projects", id, "languages"],
@@ -243,10 +254,14 @@ export default function TranslationEditor() {
       translationId?: string;
     }) => {
       if (params.translationId) {
-        return await apiRequest("PATCH", `/api/translations/${params.translationId}`, {
-          value: params.value,
-          status: params.status,
-        });
+        return await apiRequest(
+          "PATCH",
+          `/api/translations/${params.translationId}`,
+          {
+            value: params.value,
+            status: params.status,
+          },
+        );
       } else {
         return await apiRequest("POST", "/api/translations", {
           keyId: params.keyId,
@@ -257,7 +272,9 @@ export default function TranslationEditor() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "translations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/projects", id, "translations"],
+      });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -281,7 +298,11 @@ export default function TranslationEditor() {
 
   const suggestTranslation = useMutation({
     mutationFn: async (translationId: string) => {
-      const response = await apiRequest("POST", `/api/translations/${translationId}/ai-suggest`, {});
+      const response = await apiRequest(
+        "POST",
+        `/api/translations/${translationId}/ai-suggest`,
+        {},
+      );
       return await response.json();
     },
     onError: (error: Error) => {
@@ -304,7 +325,11 @@ export default function TranslationEditor() {
     },
   });
 
-  const updateTranslation = (keyId: string, languageId: string, value: string) => {
+  const updateTranslation = (
+    keyId: string,
+    languageId: string,
+    value: string,
+  ) => {
     setTranslationData((prev) => ({
       ...prev,
       [keyId]: {
@@ -412,6 +437,112 @@ export default function TranslationEditor() {
     }
   };
 
+  const handleBulkTranslate = async () => {
+    const defaultLanguage = languages?.find((l) => l.isDefault);
+    if (!defaultLanguage) {
+      toast({
+        title: "Error",
+        description: "No default language set",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const nonDefaultLanguages = languages?.filter((l) => !l.isDefault) || [];
+    if (nonDefaultLanguages.length === 0) {
+      toast({
+        title: "No target languages",
+        description: "Add non-default languages to translate to",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedKeysList = Array.from(selectedKeys);
+    const keysWithSource = selectedKeysList.filter(
+      (keyId) => translationData[keyId]?.[defaultLanguage.id]?.value?.trim()
+    );
+
+    if (keysWithSource.length === 0) {
+      toast({
+        title: "No source text",
+        description: `All selected keys need translations in ${defaultLanguage.languageName} first`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const totalTranslations = keysWithSource.length * nonDefaultLanguages.length;
+    setIsBulkTranslating(true);
+    setBulkProgress({ current: 0, total: totalTranslations });
+
+    let completed = 0;
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const keyId of keysWithSource) {
+      for (const lang of nonDefaultLanguages) {
+        try {
+          const existingValue = translationData[keyId]?.[lang.id]?.value;
+          
+          if (existingValue && existingValue.trim()) {
+            completed++;
+            setBulkProgress({ current: completed, total: totalTranslations });
+            continue;
+          }
+
+          let translationId = translationData[keyId]?.[lang.id]?.id;
+
+          if (!translationId) {
+            const response = await apiRequest("POST", "/api/translations", {
+              keyId,
+              languageId: lang.id,
+              value: "",
+              status: "draft",
+            });
+            const newTranslation = await response.json();
+            translationId = newTranslation.id;
+
+            setTranslationData((prev) => ({
+              ...prev,
+              [keyId]: {
+                ...prev[keyId],
+                [lang.id]: {
+                  id: translationId,
+                  value: "",
+                  status: "draft",
+                },
+              },
+            }));
+          }
+
+          if (translationId) {
+            const result = await suggestTranslation.mutateAsync(translationId);
+            if (result.suggestion) {
+              updateTranslation(keyId, lang.id, result.suggestion);
+              succeeded++;
+            }
+          }
+        } catch (error) {
+          failed++;
+        }
+
+        completed++;
+        setBulkProgress({ current: completed, total: totalTranslations });
+      }
+    }
+
+    setIsBulkTranslating(false);
+    setBulkProgress({ current: 0, total: 0 });
+    
+    queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "translations"] });
+    
+    toast({
+      title: "Bulk Translation Complete",
+      description: `${succeeded} translations generated${failed > 0 ? `, ${failed} failed` : ""}`,
+    });
+  };
+
   const toggleKeySelection = (keyId: string) => {
     setSelectedKeys((prev) => {
       const newSet = new Set(prev);
@@ -432,18 +563,21 @@ export default function TranslationEditor() {
     }
   };
 
-  const filteredKeys = keys?.filter((key) =>
-    key.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    key.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredKeys =
+    keys?.filter(
+      (key) =>
+        key.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        key.description?.toLowerCase().includes(searchQuery.toLowerCase()),
+    ) || [];
 
   const totalKeys = keys?.length || 0;
-  const translatedKeys = keys?.filter((key) => {
-    const hasAllTranslations = languages?.every((lang) =>
-      translationData[key.id]?.[lang.id]?.value?.trim()
-    );
-    return hasAllTranslations;
-  }).length || 0;
+  const translatedKeys =
+    keys?.filter((key) => {
+      const hasAllTranslations = languages?.every((lang) =>
+        translationData[key.id]?.[lang.id]?.value?.trim(),
+      );
+      return hasAllTranslations;
+    }).length || 0;
 
   if (keysLoading) {
     return (
@@ -485,19 +619,61 @@ export default function TranslationEditor() {
         </div>
       </div>
 
+      {selectedKeys.size > 0 && (
+        <div className="flex items-center justify-between p-3 bg-accent/50 border rounded-lg">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedKeys(new Set())}
+              data-testid="button-clear-selection"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Clear
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {selectedKeys.size} {selectedKeys.size === 1 ? "key" : "keys"} selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {isBulkTranslating ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>
+                  Translating {bulkProgress.current} of {bulkProgress.total}...
+                </span>
+              </div>
+            ) : (
+              <Button
+                onClick={handleBulkTranslate}
+                disabled={isBulkTranslating}
+                data-testid="button-bulk-translate"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                Translate Selected
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="border rounded-lg overflow-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-12">
+              <TableHead>
                 <Checkbox
-                  checked={selectedKeys.size === filteredKeys.length && filteredKeys.length > 0}
+                  checked={
+                    selectedKeys.size === filteredKeys.length &&
+                    filteredKeys.length > 0
+                  }
                   onCheckedChange={toggleAllKeys}
                   data-testid="checkbox-select-all"
                 />
               </TableHead>
               <TableHead className="min-w-48">Key</TableHead>
-              {languages?.map((lang) => (
+              <TableHead className="min-w-48">Translations</TableHead>
+              {/* {languages?.map((lang) => (
                 <TableHead key={lang.id} className="min-w-64">
                   <div className="flex items-center gap-2">
                     <span className="font-mono">{lang.languageCode}</span>
@@ -511,22 +687,22 @@ export default function TranslationEditor() {
                     )}
                   </div>
                 </TableHead>
-              ))}
+              ))} */}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredKeys.map((key) => (
               <TableRow key={key.id} data-testid={`row-key-${key.id}`}>
-                <TableCell>
+                <TableCell className="align-top">
                   <Checkbox
                     checked={selectedKeys.has(key.id)}
                     onCheckedChange={() => toggleKeySelection(key.id)}
                     data-testid={`checkbox-key-${key.id}`}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top max-w-60 text-wrap break-all">
                   <div>
-                    <div className="font-mono text-sm font-medium">{key.key}</div>
+                    <div className="font-mono text-xs">{key.key}</div>
                     {key.description && (
                       <div className="text-xs text-muted-foreground mt-1">
                         {key.description}
@@ -534,7 +710,38 @@ export default function TranslationEditor() {
                     )}
                   </div>
                 </TableCell>
-                {languages?.map((lang) => (
+                <TableCell>
+                  <Table>
+                    <TableBody>
+                      {languages?.map((lang) => (
+                        <TableRow key={lang.id}>
+                          <TableCell className="font-mono text-xs text-muted-foreground w-20">
+                            {lang.languageCode}
+                          </TableCell>
+                          <TableCell className="align-top">
+                            <TranslationCell
+                              keyId={key.id}
+                              translationKey={key}
+                              language={lang}
+                              translationData={translationData}
+                              onUpdate={updateTranslation}
+                              onSave={handleSave}
+                              onAISuggest={handleAISuggest}
+                              isDefault={!!lang.isDefault}
+                              isSaving={
+                                savingStates[`${key.id}-${lang.id}`] || false
+                              }
+                              isSuggesting={
+                                suggestingStates[`${key.id}-${lang.id}`] || false
+                              }
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableCell>
+                {/* {languages?.map((lang) => (
                   <TableCell key={lang.id} className="align-top">
                     <TranslationCell
                       keyId={key.id}
@@ -549,7 +756,7 @@ export default function TranslationEditor() {
                       isSuggesting={suggestingStates[`${key.id}-${lang.id}`] || false}
                     />
                   </TableCell>
-                ))}
+                ))} */}
               </TableRow>
             ))}
           </TableBody>
