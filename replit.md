@@ -79,6 +79,38 @@ Preferred communication style: Simple, everyday language.
 
 **User Experience:** Select keys via checkboxes, click "Translate Selected", watch progress, get immediate feedback on completion.
 
+### Translation Memory
+
+**Purpose:** Avoid repeated common translations by storing and suggesting previously approved translations.
+
+**Backend Implementation:**
+- `translation_memory` table stores: sourceText (from default language), targetLanguageCode, translatedText, usageCount, lastUsedAt
+- Unique constraint on (sourceText, targetLanguageCode) ensures no duplicates
+- Automatic population: When a translation is approved, it's automatically added to memory
+- Upsert logic increments usage count on duplicate entries
+- `/api/translation-memory/suggest` endpoint fetches suggestions
+
+**Frontend UI:**
+- When editing a non-default language translation, automatically checks for memory suggestions
+- If source text matches an approved translation, displays suggestion banner
+- Banner shows: History icon, "Translation Memory: {suggestion}", and "Apply" button
+- Clicking Apply fills the translation with remembered text (doesn't auto-save)
+
+**User Experience:**
+1. Translator approves a translation (e.g., "Hello" → "Bonjour")
+2. System automatically stores it in translation memory
+3. Later, when translating another key with same source text "Hello"
+4. Editor shows memory suggestion "Bonjour" with Apply button
+5. Translator clicks Apply to reuse the translation
+6. Result: Consistency across translations, reduced repetitive work
+
+**Key Features:**
+- Cross-project memory: All projects share memory for maximum reuse
+- Exact match only: Suggestions appear only when source text matches exactly
+- Non-intrusive: Optional banner, doesn't interfere with manual editing
+- Quality-focused: Only approved translations are added to memory
+- Usage tracking: Counts how often each memory entry is reused
+
 ## External Dependencies
 
 **Third-Party Services:**
