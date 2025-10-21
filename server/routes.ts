@@ -12,6 +12,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import Papa from "papaparse";
+import OpenAI from "openai";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -707,7 +708,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Simple passthrough for now - will integrate Google Translate API if available
       // For MVP, just return a placeholder response
-      
+      const client = new OpenAI();
+
+      const response = await client.responses.create({
+          model: "gpt-5-nano",
+          input: `[${targetLanguage}] ${text}`
+      });
+
       res.json({
         translation: `[${targetLanguage}] ${text}`,
         confidence: 0.8,
