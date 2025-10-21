@@ -1,13 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Sparkles, Loader2, Search, Check, X, History } from "lucide-react";
+import { Sparkles, Loader2, Search, Check, X, History, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   Table,
   TableBody,
@@ -19,6 +35,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertTranslationKeySchema } from "@shared/schema";
+import { z } from "zod";
 import type {
   ProjectLanguage,
   TranslationKey,
@@ -254,6 +274,12 @@ function TranslationCell({
   );
 }
 
+const addKeyFormSchema = insertTranslationKeySchema.extend({
+  projectId: z.string(),
+});
+
+type AddKeyFormData = z.infer<typeof addKeyFormSchema>;
+
 export default function TranslationEditor() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
@@ -267,6 +293,16 @@ export default function TranslationEditor() {
   >({});
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [isAddKeyDialogOpen, setIsAddKeyDialogOpen] = useState(false);
+
+  const addKeyForm = useForm<AddKeyFormData>({
+    resolver: zodResolver(addKeyFormSchema),
+    defaultValues: {
+      projectId: id,
+      key: "",
+      description: "",
+    },
+  });
 
   const { data: languages } = useQuery<ProjectLanguage[]>({
     queryKey: ["/api/projects", id, "languages"],
@@ -375,6 +411,45 @@ export default function TranslationEditor() {
       });
     },
   });
+
+  const createKey = useMutation({
+    mutationFn: async (data: AddKeyFormData) => {
+      return await apiRequest("POST", "/api/translation-keys", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/projects", id, "keys"],
+      });
+      addKeyForm.reset();
+      setIsAddKeyDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Translation key added successfully",
+      });
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create translation key",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddKey = (data: AddKeyFormData) => {
+    createKey.mutate(data);
+  };
 
   const updateTranslation = (
     keyId: string,
@@ -682,8 +757,91 @@ export default function TranslationEditor() {
 
   if (!keys || keys.length === 0) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-muted-foreground">No translation keys available</p>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Translation Editor</h1>
+          </div>
+          <Dialog open={isAddKeyDialogOpen} onOpenChange={setIsAddKeyDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-key">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Key
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Translation Key</DialogTitle>
+                <DialogDescription>
+                  Create a new translation key for your project
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...addKeyForm}>
+                <form onSubmit={addKeyForm.handleSubmit(handleAddKey)} className="space-y-4">
+                  <FormField
+                    control={addKeyForm.control}
+                    name="key"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Key</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., home.welcome.title"
+                            {...field}
+                            data-testid="input-key"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description (optional)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Context for translators..."
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsAddKeyDialogOpen(false)}
+                      data-testid="button-cancel"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createKey.isPending}
+                      data-testid="button-submit-key"
+                    >
+                      {createKey.isPending && (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      )}
+                      Add Key
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+        <div className="py-16 text-center">
+          <p className="text-muted-foreground">No translation keys available</p>
+          <p className="text-sm text-muted-foreground mt-2">Get started by adding your first translation key</p>
+        </div>
       </div>
     );
   }
@@ -708,6 +866,81 @@ export default function TranslationEditor() {
               data-testid="input-search"
             />
           </div>
+          <Dialog open={isAddKeyDialogOpen} onOpenChange={setIsAddKeyDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-key">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Key
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Translation Key</DialogTitle>
+                <DialogDescription>
+                  Create a new translation key for your project
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...addKeyForm}>
+                <form onSubmit={addKeyForm.handleSubmit(handleAddKey)} className="space-y-4">
+                  <FormField
+                    control={addKeyForm.control}
+                    name="key"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Key</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., home.welcome.title"
+                            {...field}
+                            data-testid="input-key"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description (optional)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Context for translators..."
+                            {...field}
+                            value={field.value || ""}
+                            data-testid="input-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsAddKeyDialogOpen(false)}
+                      data-testid="button-cancel"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createKey.isPending}
+                      data-testid="button-submit-key"
+                    >
+                      {createKey.isPending && (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      )}
+                      Add Key
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

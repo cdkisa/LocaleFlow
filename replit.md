@@ -111,6 +111,37 @@ Preferred communication style: Simple, everyday language.
 - Quality-focused: Only approved translations are added to memory
 - Usage tracking: Counts how often each memory entry is reused
 
+### Add Keys in Translation Editor
+
+**Purpose:** Allow users to create translation keys directly from the translation editor without navigating away from their workflow.
+
+**Implementation:**
+- "Add Key" button located in the header next to the search input
+- Opens a modal dialog with a form for creating new translation keys
+- Uses React Hook Form with Zod validation
+- API endpoint: POST /api/translation-keys
+
+**Form Fields:**
+- Key (required): Text input for the translation key name (e.g., "home.welcome.title")
+- Description (optional): Textarea for providing context to translators
+
+**User Experience:**
+1. Click "Add Key" button in the translation editor header
+2. Dialog opens with the form
+3. Fill in the key name and optional description
+4. Submit the form
+5. Success toast appears
+6. Dialog closes and resets
+7. Translation keys list automatically refreshes to show the new key
+8. Empty state includes helpful message prompting users to add their first key
+
+**Key Features:**
+- No page navigation required: Stay in the editor while adding keys
+- Instant feedback: Success toasts and automatic list refresh
+- Validation: Form validates key name is required before submission
+- Empty state support: Works even when there are no existing keys
+- Seamless integration: Uses same styling and patterns as the rest of the application
+
 ## External Dependencies
 
 **Third-Party Services:**
