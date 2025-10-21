@@ -24,13 +24,21 @@ function convertToNestedObject(flatObj: Record<string, string>): Record<string, 
     
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
+      
       if (!(part in current)) {
         current[part] = {};
+      } else if (typeof current[part] !== 'object' || current[part] === null) {
+        current[part] = {};
       }
+      
       current = current[part];
     }
     
-    current[parts[parts.length - 1]] = value;
+    const lastPart = parts[parts.length - 1];
+    if (typeof current[lastPart] === 'object' && current[lastPart] !== null) {
+      continue;
+    }
+    current[lastPart] = value;
   }
   
   return result;
