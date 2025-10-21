@@ -55,6 +55,24 @@ Preferred communication style: Simple, everyday language.
 **Frontend UI:** Sparkles icon in translation editor, loading indicators, toast notifications for feedback.
 **Security:** API key stored server-side, endpoint protected by authentication.
 
+### Bulk Translation Feature
+
+**Functionality:** Translate multiple selected keys at once using AI-powered suggestions.
+**UI Components:**
+- Bulk actions toolbar appears when keys are selected
+- Shows selection count and action buttons (Clear, Translate Selected)
+- Real-time progress indicator during bulk operations
+- Completion toast with success/failure counts
+
+**Smart Translation:**
+- Only translates empty fields (preserves existing translations)
+- Validates prerequisites (default language, source text)
+- Processes all non-default languages for selected keys
+- Auto-creates translation records as needed
+- Invalidates queries to keep UI in sync with database
+
+**User Experience:** Select keys via checkboxes, click "Translate Selected", watch progress, get immediate feedback on completion.
+
 ## External Dependencies
 
 **Third-Party Services:**
