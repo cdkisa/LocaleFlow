@@ -350,6 +350,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         translatedBy: userId,
       };
       const translation = await storage.updateTranslation(req.params.id, updates);
+      
+      // If translation is approved, add to translation memory
+      if (translation.status === "approved" && translation.value) {
+        try {
+          // Get translation key to find project
+          const translationKey = await storage.getTranslationKey(translation.keyId);
+          if (translationKey) {
+            // Get languages to find source language
+            const languages = await storage.getProjectLanguages(translationKey.projectId);
+            const sourceLang = languages.find(l => l.isDefault);
+            const targetLang = languages.find(l => l.id === translation.languageId);
+            
+            if (sourceLang && targetLang) {
+              // Get source translation
+              const allTranslations = await storage.getProjectTranslations(translationKey.projectId);
+              const sourceTranslation = allTranslations.find(
+                t => t.keyId === translation.keyId && t.languageId === sourceLang.id
+              );
+              
+              if (sourceTranslation && sourceTranslation.value) {
+                // Add to translation memory
+                await storage.upsertTranslationMemory({
+                  sourceText: sourceTranslation.value,
+                  targetLanguageCode: targetLang.languageCode,
+                  translatedText: translation.value,
+                  usageCount: 1,
+                  lastUsedAt: new Date(),
+                });
+              }
+            }
+          }
+        } catch (memoryError) {
+          // Log but don't fail the request if translation memory update fails
+          console.error("Error updating translation memory:", memoryError);
+        }
+      }
+      
       res.json(translation);
     } catch (error) {
       console.error("Error updating translation:", error);
@@ -364,6 +401,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting translation:", error);
       res.status(500).json({ message: "Failed to delete translation" });
+    }
+  });
+
+  // Translation memory suggestion endpoint
+  app.get("/api/translation-memory/suggest", isAuthenticated, async (req, res) => {
+    try {
+      const { sourceText, targetLanguageCode } = req.query;
+      
+      if (!sourceText || !targetLanguageCode) {
+        return res.status(400).json({ message: "sourceText and targetLanguageCode are required" });
+      }
+      
+      const suggestion = await storage.findTranslationMemorySuggestion(
+        sourceText as string,
+        targetLanguageCode as string
+      );
+      
+      res.json(suggestion || null);
+    } catch (error) {
+      console.error("Error finding translation memory suggestion:", error);
+      res.status(500).json({ message: "Failed to find translation memory suggestion" });
     }
   });
 
