@@ -26,9 +26,13 @@ export default function ImportTranslations() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      const message = data.draftsCreated > 0 
+        ? `Imported ${data.imported || 0} translation(s) and auto-created ${data.draftsCreated} draft(s) for other languages`
+        : `Imported ${data.imported || 0} translation(s)`;
+      
       toast({
         title: "Success",
-        description: `Imported ${data.imported || 0} translations`,
+        description: message,
       });
       setLocation(`/projects/${id}`);
     },
@@ -194,11 +198,23 @@ export default function ImportTranslations() {
             <Alert className="mt-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>JSON Format:</strong> Use nested objects with keys as property names and
-                values as translations. Example:{" "}
-                <code className="text-xs">
-                  {`{ "en": { "home.title": "Welcome" }, "fr": { "home.title": "Bienvenue" } }`}
-                </code>
+                <div className="space-y-2">
+                  <div>
+                    <strong>JSON Format:</strong> Use nested objects with language codes and key-value pairs.
+                  </div>
+                  <div>
+                    <strong>Multi-language:</strong>{" "}
+                    <code className="text-xs block mt-1 p-2 bg-muted rounded">
+                      {`{ "en": { "home.title": "Welcome" }, "fr": { "home.title": "Bienvenue" } }`}
+                    </code>
+                  </div>
+                  <div>
+                    <strong>Single-language:</strong> Import one language and draft translations will be auto-created for all other project languages.
+                    <code className="text-xs block mt-1 p-2 bg-muted rounded">
+                      {`{ "en": { "home.title": "Welcome", "home.subtitle": "Get Started" } }`}
+                    </code>
+                  </div>
+                </div>
               </AlertDescription>
             </Alert>
           )}

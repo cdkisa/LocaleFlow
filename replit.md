@@ -190,3 +190,15 @@ Preferred communication style: Simple, everyday language.
 - **Database Schema**: New documents table with metadata tracking (filename, type, size, storage path, extraction status, error messages)
 - **UI Components**: Documents tab in project detail page with upload button, document table, and status badges
 - **Security**: Owner-only upload/delete operations, private file storage with ACL policies
+
+### Import Translation Auto-Draft Feature (Completed - October 21, 2025)
+- **Auto-Draft Creation**: When importing translations for a single language, automatically creates draft translations for all other project languages
+  - Only creates drafts for keys present in the uploaded data (not all project keys)
+  - Uses `touchedKeyIds` Set to track keys modified during import
+  - Prevents unintended side effects on unrelated translation keys
+- **Implementation Pattern**: Track affected resource IDs during batch operations to avoid scope creep
+  - JSON import handler tracks touched keys during create/update
+  - CSV import handler tracks touched keys during create/update
+  - Auto-draft loop only iterates over touched keys, not entire project
+- **UI Documentation**: Updated import page with clearer information about single-language imports and multi-language format expectations
+- **Performance**: Sequential writes for auto-draft creation (could be optimized with batching for larger projects)

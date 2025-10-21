@@ -744,6 +744,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const errors: string[] = [];
       const warnings: string[] = [];
       
+      // Track keys that are actually touched during this import
+      const touchedKeyIds = new Set<string>();
+      
       // Pre-load project data into maps for O(1) lookups
       const languages = await storage.getProjectLanguages(projectId);
       const languageMap = new Map(languages.map(l => [l.languageCode, l.id]));
@@ -814,6 +817,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 });
                 translationMap.set(lookupKey, newTranslation);
               }
+              
+              // Track this key as touched during import
+              touchedKeyIds.add(translationKey.id);
               importedCount++;
             } catch (err) {
               errors.push(`Failed to import '${key}' for '${langCode}': ${err instanceof Error ? err.message : String(err)}`);
@@ -907,9 +913,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
               translationMap.set(lookupKey, newTranslation);
             }
+            
+            // Track this key as touched during import
+            touchedKeyIds.add(translationKey.id);
             importedCount++;
           } catch (err) {
             errors.push(`Row ${rowNum}: Failed to import - ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
+
+      // Auto-create draft translations for all other languages
+      // Only create drafts for keys that were actually touched during this import
+      let draftCreatedCount = 0;
+      
+      for (const keyId of Array.from(touchedKeyIds)) {
+        for (const language of languages) {
+          const lookupKey = `${keyId}:${language.id}`;
+          
+          // If translation doesn't exist for this language, create a draft with empty value
+          if (!translationMap.has(lookupKey)) {
+            try {
+              const newTranslation = await storage.createTranslation({
+                keyId,
+                languageId: language.id,
+                value: "",
+                status: "draft",
+                translatedBy: userId,
+              });
+              translationMap.set(lookupKey, newTranslation);
+              draftCreatedCount++;
+            } catch (err) {
+              console.error(`Failed to create draft translation for key ${keyId} in language ${language.languageCode}:`, err);
+            }
           }
         }
       }
@@ -918,17 +954,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (errors.length > 0) {
         return res.status(400).json({ 
           imported: importedCount,
+          draftsCreated: draftCreatedCount,
           errors,
           warnings: warnings.length > 0 ? warnings : undefined,
-          message: `Import completed with ${errors.length} error(s) and ${importedCount} successful import(s)`
+          message: `Import completed with ${errors.length} error(s), ${importedCount} successful import(s), and ${draftCreatedCount} draft(s) auto-created`
         });
       }
 
       res.json({ 
         imported: importedCount,
+        draftsCreated: draftCreatedCount,
         warnings: warnings.length > 0 ? warnings : undefined,
         message: importedCount > 0 
-          ? `Successfully imported ${importedCount} translation(s)${warnings.length > 0 ? ` with ${warnings.length} warning(s)` : ''}`
+          ? `Successfully imported ${importedCount} translation(s)${draftCreatedCount > 0 ? ` and auto-created ${draftCreatedCount} draft(s) for other languages` : ''}${warnings.length > 0 ? ` with ${warnings.length} warning(s)` : ''}`
           : 'No translations were imported'
       });
     } catch (error) {
