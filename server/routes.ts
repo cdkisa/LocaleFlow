@@ -1320,6 +1320,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Pseudo-localization endpoint
+  app.post("/api/projects/:id/pseudo-localize", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const projectId = req.params.id;
+      const { targetLanguageId } = req.body;
+
+      if (!targetLanguageId) {
+        return res.status(400).json({ message: "targetLanguageId is required" });
+      }
+
+      // Verify project exists and user has access
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Get languages and verify target language belongs to this project
+      const languages = await storage.getProjectLanguages(projectId);
+      const targetLanguage = languages.find(l => l.id === targetLanguageId);
+      if (!targetLanguage) {
+        return res.status(404).json({ message: "Target language not found in this project" });
+      }
+
+      // Find the default (source) language
+      const defaultLanguage = languages.find(l => l.isDefault);
+      if (!defaultLanguage) {
+        return res.status(400).json({ message: "No default language configured for this project" });
+      }
+
+      if (targetLanguageId === defaultLanguage.id) {
+        return res.status(400).json({ message: "Cannot pseudo-localize the default (source) language" });
+      }
+
+      // Get all keys and existing translations
+      const keys = await storage.getProjectKeys(projectId);
+      const allTranslations = await storage.getProjectTranslations(projectId);
+
+      // Build lookup maps
+      const sourceTranslationMap = new Map<string, string>();
+      const targetTranslationMap = new Map<string, Translation>();
+
+      for (const t of allTranslations) {
+        if (t.languageId === defaultLanguage.id) {
+          sourceTranslationMap.set(t.keyId, t.value);
+        }
+        if (t.languageId === targetLanguageId) {
+          targetTranslationMap.set(t.keyId, t);
+        }
+      }
+
+      const { pseudoLocalize } = await import("./pseudoLocalize");
+
+      let generated = 0;
+
+      for (const key of keys) {
+        const sourceValue = sourceTranslationMap.get(key.id);
+        if (!sourceValue || sourceValue.trim().length === 0) {
+          continue; // Skip keys without source text
+        }
+
+        const pseudoValue = pseudoLocalize(sourceValue);
+        const existingTarget = targetTranslationMap.get(key.id);
+
+        if (existingTarget) {
+          await storage.updateTranslation(existingTarget.id, {
+            value: pseudoValue,
+            status: "draft",
+          });
+        } else {
+          await storage.createTranslation({
+            keyId: key.id,
+            languageId: targetLanguageId,
+            value: pseudoValue,
+            status: "draft",
+            translatedBy: userId,
+          });
+        }
+
+        generated++;
+      }
+
+      res.json({ generated });
+    } catch (error) {
+      console.error("Error pseudo-localizing:", error);
+      res.status(500).json({ message: "Failed to pseudo-localize translations" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
