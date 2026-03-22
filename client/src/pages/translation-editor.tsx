@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Sparkles, Loader2, Search, Check, X, History, Plus } from "lucide-react";
+import { Sparkles, Loader2, Search, Check, X, History, Plus, Languages } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -12,10 +12,19 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import {
   Form,
   FormControl,
@@ -294,6 +303,10 @@ export default function TranslationEditor() {
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const [isAddKeyDialogOpen, setIsAddKeyDialogOpen] = useState(false);
+  const [isPreTranslateDialogOpen, setIsPreTranslateDialogOpen] = useState(false);
+  const [preTranslateLanguageId, setPreTranslateLanguageId] = useState<string>("");
+  const [isPreTranslating, setIsPreTranslating] = useState(false);
+  const [preTranslateProgress, setPreTranslateProgress] = useState<{ translated: number; skipped: number; errors: number } | null>(null);
 
   const addKeyForm = useForm<AddKeyFormData>({
     resolver: zodResolver(addKeyFormSchema),
@@ -710,6 +723,58 @@ export default function TranslationEditor() {
     });
   };
 
+  const handlePreTranslate = async () => {
+    if (!preTranslateLanguageId) {
+      toast({
+        title: "Error",
+        description: "Please select a target language",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsPreTranslating(true);
+    setPreTranslateProgress(null);
+
+    try {
+      const response = await apiRequest(
+        "POST",
+        `/api/projects/${id}/pre-translate`,
+        { languageId: preTranslateLanguageId },
+      );
+      const result = await response.json();
+      setPreTranslateProgress(result);
+
+      queryClient.invalidateQueries({
+        queryKey: ["/api/projects", id, "translations"],
+      });
+
+      toast({
+        title: "Pre-translation Complete",
+        description: `${result.translated} translated, ${result.skipped} skipped${result.errors > 0 ? `, ${result.errors} errors` : ""}`,
+      });
+    } catch (error: any) {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: error.message || "Failed to pre-translate",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPreTranslating(false);
+    }
+  };
+
   const toggleKeySelection = (keyId: string) => {
     setSelectedKeys((prev) => {
       const newSet = new Set(prev);
@@ -939,6 +1004,102 @@ export default function TranslationEditor() {
                   </div>
                 </form>
               </Form>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={isPreTranslateDialogOpen}
+            onOpenChange={(open) => {
+              setIsPreTranslateDialogOpen(open);
+              if (!open) {
+                setPreTranslateLanguageId("");
+                setPreTranslateProgress(null);
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-pre-translate">
+                <Languages className="h-4 w-4 mr-2" />
+                Pre-translate
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Pre-translate</DialogTitle>
+                <DialogDescription>
+                  Automatically translate all empty translations for a selected language using AI. Translations will be saved as drafts for review.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Target Language</label>
+                  <Select
+                    value={preTranslateLanguageId}
+                    onValueChange={setPreTranslateLanguageId}
+                    disabled={isPreTranslating}
+                  >
+                    <SelectTrigger data-testid="select-pre-translate-language">
+                      <SelectValue placeholder="Select a language..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {languages
+                        ?.filter((l) => !l.isDefault)
+                        .map((lang) => (
+                          <SelectItem key={lang.id} value={lang.id}>
+                            <span className="font-mono mr-2">{lang.languageCode}</span>
+                            {lang.languageName}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {isPreTranslating && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Translating... This may take a while.</span>
+                    </div>
+                    <Progress value={undefined} className="h-2" />
+                  </div>
+                )}
+                {preTranslateProgress && !isPreTranslating && (
+                  <div className="space-y-1 text-sm">
+                    <p className="text-chart-2">{preTranslateProgress.translated} translations created</p>
+                    <p className="text-muted-foreground">{preTranslateProgress.skipped} skipped (already translated or no source)</p>
+                    {preTranslateProgress.errors > 0 && (
+                      <p className="text-destructive">{preTranslateProgress.errors} errors</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  onClick={() => setIsPreTranslateDialogOpen(false)}
+                  disabled={isPreTranslating}
+                  data-testid="button-pre-translate-cancel"
+                >
+                  {preTranslateProgress ? "Close" : "Cancel"}
+                </Button>
+                {!preTranslateProgress && (
+                  <Button
+                    onClick={handlePreTranslate}
+                    disabled={isPreTranslating || !preTranslateLanguageId}
+                    data-testid="button-pre-translate-start"
+                  >
+                    {isPreTranslating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Translating...
+                      </>
+                    ) : (
+                      <>
+                        <Languages className="h-4 w-4 mr-2" />
+                        Start Pre-translation
+                      </>
+                    )}
+                  </Button>
+                )}
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>

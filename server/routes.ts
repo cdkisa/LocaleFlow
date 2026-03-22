@@ -484,6 +484,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Batch pre-translate endpoint
+  app.post("/api/projects/:id/pre-translate", isAuthenticated, async (req: any, res) => {
+    try {
+      const projectId = req.params.id;
+      const userId = req.user.claims.sub;
+      const { languageId } = req.body;
+
+      if (!languageId) {
+        return res.status(400).json({ message: "languageId is required" });
+      }
+
+      // Get project and verify it exists
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      // Get all languages for the project
+      const languages = await storage.getProjectLanguages(projectId);
+      const targetLanguage = languages.find(l => l.id === languageId);
+      if (!targetLanguage) {
+        return res.status(404).json({ message: "Target language not found" });
+      }
+
+      // Find the default (source) language
+      const defaultLang = languages.find(l => l.isDefault);
+      if (!defaultLang) {
+        return res.status(400).json({ message: "No default language set for this project" });
+      }
+
+      if (targetLanguage.id === defaultLang.id) {
+        return res.status(400).json({ message: "Cannot pre-translate the default language" });
+      }
+
+      // Get all keys and existing translations
+      const keys = await storage.getProjectKeys(projectId);
+      const allTranslations = await storage.getProjectTranslations(projectId);
+
+      // Build lookup maps
+      const translationMap = new Map(
+        allTranslations.map(t => [`${t.keyId}:${t.languageId}`, t])
+      );
+
+      let translated = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const key of keys) {
+        try {
+          // Check if target translation already exists and has a non-empty value
+          const existingTranslation = translationMap.get(`${key.id}:${languageId}`);
+          if (existingTranslation && existingTranslation.value && existingTranslation.value.trim()) {
+            skipped++;
+            continue;
+          }
+
+          // Get the source text from the default language
+          const sourceTranslation = translationMap.get(`${key.id}:${defaultLang.id}`);
+          if (!sourceTranslation || !sourceTranslation.value || !sourceTranslation.value.trim()) {
+            skipped++;
+            continue;
+          }
+
+          // Get AI translation
+          const suggestion = await getTranslationSuggestion({
+            keyName: key.key,
+            description: key.description || undefined,
+            sourceText: sourceTranslation.value,
+            sourceLangName: defaultLang.languageName,
+            targetLangName: targetLanguage.languageName,
+          });
+
+          if (!suggestion || !suggestion.trim()) {
+            errors++;
+            continue;
+          }
+
+          // Create or update the translation with draft status
+          if (existingTranslation) {
+            await storage.updateTranslation(existingTranslation.id, {
+              value: suggestion,
+              status: "draft",
+              translatedBy: userId,
+            });
+          } else {
+            await storage.createTranslation({
+              keyId: key.id,
+              languageId,
+              value: suggestion,
+              status: "draft",
+              translatedBy: userId,
+            });
+          }
+
+          translated++;
+        } catch (err) {
+          console.error(`Pre-translate error for key ${key.key}:`, err);
+          errors++;
+        }
+      }
+
+      res.json({ translated, skipped, errors });
+    } catch (error) {
+      console.error("Error in pre-translate:", error);
+      res.status(500).json({ message: "Failed to pre-translate" });
+    }
+  });
+
   // Language management endpoints
   app.post("/api/projects/:id/languages", isAuthenticated, async (req: any, res) => {
     try {
