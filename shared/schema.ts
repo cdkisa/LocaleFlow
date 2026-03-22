@@ -101,6 +101,7 @@ export const translationKeys = pgTable("translation_keys", {
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   key: varchar("key", { length: 500 }).notNull(), // e.g., "home.welcome.title"
   description: text("description"), // optional context for translators
+  maxLength: integer("max_length"), // optional character limit for translations
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

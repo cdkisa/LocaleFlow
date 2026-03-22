@@ -35,6 +35,7 @@ export default function EditKey() {
       projectId: translationKey.projectId,
       key: translationKey.key,
       description: translationKey.description || "",
+      maxLength: translationKey.maxLength ?? undefined,
     } : undefined,
   });
 
@@ -145,6 +146,34 @@ export default function EditKey() {
                     </FormControl>
                     <FormDescription>
                       Help translators understand the context and usage
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="maxLength"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Max Length (Optional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="e.g., 60"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          field.onChange(val === "" ? null : parseInt(val, 10));
+                        }}
+                        data-testid="input-max-length"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Maximum character count for translations of this key
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

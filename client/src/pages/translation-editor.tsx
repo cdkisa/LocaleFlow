@@ -171,6 +171,18 @@ function TranslationCell({
     setMemorySuggestion(null);
   };
 
+  const maxLength = translationKey.maxLength;
+  const currentLength = value.length;
+  const charLimitRatio = maxLength ? currentLength / maxLength : 0;
+  const isApproachingLimit = maxLength ? charLimitRatio > 0.8 && charLimitRatio <= 1 : false;
+  const isExceedingLimit = maxLength ? charLimitRatio > 1 : false;
+
+  const charCountColor = isExceedingLimit
+    ? "text-destructive"
+    : isApproachingLimit
+      ? "text-yellow-500"
+      : "text-muted-foreground";
+
   return (
     <div className="min-w-64">
       {isEditing ? (
@@ -183,6 +195,14 @@ function TranslationCell({
             rows={1}
             data-testid={`input-translation-${keyId}-${language.id}`}
           />
+          {maxLength && (
+            <div
+              className={`text-xs font-mono ${charCountColor}`}
+              data-testid={`char-count-${keyId}-${language.id}`}
+            >
+              {currentLength}/{maxLength}
+            </div>
+          )}
           {memorySuggestion && (
             <div className="flex items-center gap-2 p-2 rounded-md bg-chart-1/10 border border-chart-1/30">
               <History className="h-3.5 w-3.5 text-chart-1" />
@@ -251,6 +271,14 @@ function TranslationCell({
             >
               {status.replace("_", " ")}
             </Badge>
+            {maxLength && hasValue && (
+              <span
+                className={`text-xs font-mono ${charCountColor}`}
+                data-testid={`char-count-${keyId}-${language.id}`}
+              >
+                {currentLength}/{maxLength}
+              </span>
+            )}
             <div className="flex-1" />
             {!isDefault && (
               <Button
@@ -301,6 +329,7 @@ export default function TranslationEditor() {
       projectId: id,
       key: "",
       description: "",
+      maxLength: undefined,
     },
   });
 
@@ -813,6 +842,30 @@ export default function TranslationEditor() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="maxLength"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Max Length (optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            placeholder="e.g., 60"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              field.onChange(val === "" ? null : parseInt(val, 10));
+                            }}
+                            data-testid="input-max-length"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
@@ -911,6 +964,30 @@ export default function TranslationEditor() {
                             {...field}
                             value={field.value || ""}
                             data-testid="input-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="maxLength"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Max Length (optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            placeholder="e.g., 60"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              field.onChange(val === "" ? null : parseInt(val, 10));
+                            }}
+                            data-testid="input-max-length"
                           />
                         </FormControl>
                         <FormMessage />
