@@ -1,13 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Sparkles, Loader2, Search, Check, X, History, Plus } from "lucide-react";
+import { Sparkles, Loader2, Search, Check, X, History, Plus, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +68,33 @@ const statusColors = {
   in_review: "bg-chart-3/10 text-chart-3 border-chart-3/20",
   approved: "bg-chart-2/10 text-chart-2 border-chart-2/20",
 };
+
+const priorityColors: Record<string, string> = {
+  critical: "bg-red-500/10 text-red-500 border-red-500/30",
+  high: "bg-orange-500/10 text-orange-500 border-orange-500/30",
+  normal: "",
+  low: "bg-slate-500/10 text-slate-400 border-slate-500/30",
+};
+
+const priorityLabels: Record<string, string> = {
+  critical: "Critical",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
+};
+
+function PriorityBadge({ priority }: { priority: string }) {
+  if (!priority || priority === "normal") return null;
+  return (
+    <Badge
+      variant="outline"
+      className={priorityColors[priority] || ""}
+      data-testid={`badge-priority-${priority}`}
+    >
+      {priorityLabels[priority] || priority}
+    </Badge>
+  );
+}
 
 function HighlightedText({ text }: { text: string }) {
   if (!text) return null;
@@ -294,6 +328,7 @@ export default function TranslationEditor() {
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const [isAddKeyDialogOpen, setIsAddKeyDialogOpen] = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
 
   const addKeyForm = useForm<AddKeyFormData>({
     resolver: zodResolver(addKeyFormSchema),
@@ -301,6 +336,7 @@ export default function TranslationEditor() {
       projectId: id,
       key: "",
       description: "",
+      priority: "normal",
     },
   });
 
@@ -733,8 +769,9 @@ export default function TranslationEditor() {
   const filteredKeys =
     keys?.filter(
       (key) =>
-        key.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        key.description?.toLowerCase().includes(searchQuery.toLowerCase()),
+        (key.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        key.description?.toLowerCase().includes(searchQuery.toLowerCase())) &&
+        (priorityFilter === "all" || key.priority === priorityFilter),
     ) || [];
 
   const totalKeys = keys?.length || 0;
@@ -813,6 +850,32 @@ export default function TranslationEditor() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="priority"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Priority</FormLabel>
+                        <Select
+                          value={field.value || "normal"}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-priority">
+                              <SelectValue placeholder="Select priority" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="critical">Critical</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
@@ -866,6 +929,19 @@ export default function TranslationEditor() {
               data-testid="input-search"
             />
           </div>
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-44" data-testid="select-priority-filter">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="All priorities" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All priorities</SelectItem>
+              <SelectItem value="critical">Critical</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
           <Dialog open={isAddKeyDialogOpen} onOpenChange={setIsAddKeyDialogOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-add-key">
@@ -913,6 +989,32 @@ export default function TranslationEditor() {
                             data-testid="input-description"
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="priority"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Priority</FormLabel>
+                        <Select
+                          value={field.value || "normal"}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-priority">
+                              <SelectValue placeholder="Select priority" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="critical">Critical</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1028,7 +1130,10 @@ export default function TranslationEditor() {
                 </TableCell>
                 <TableCell className="align-top max-w-60 text-wrap break-all">
                   <div>
-                    <div className="font-mono text-xs">{key.key}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs">{key.key}</span>
+                      <PriorityBadge priority={key.priority} />
+                    </div>
                     {key.description && (
                       <div className="text-xs text-muted-foreground mt-1">
                         {key.description}

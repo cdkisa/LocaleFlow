@@ -1,0 +1,8 @@
+{
+  "priority": {
+    "critical": "Critique",
+    "high": "\u00c9lev\u00e9e",
+    "normal": "Normale",
+    "low": "Basse"
+  }
+}
