@@ -1320,6 +1320,136 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Find & Replace - Preview endpoint
+  app.post("/api/projects/:id/find-preview", isAuthenticated, async (req: any, res) => {
+    try {
+      const projectId = req.params.id;
+      const { find, replace, languageId, caseSensitive } = req.body;
+
+      if (!find || typeof find !== "string" || find.trim().length === 0) {
+        return res.status(400).json({ message: "Find text is required" });
+      }
+      if (replace === undefined || replace === null || typeof replace !== "string") {
+        return res.status(400).json({ message: "Replace text is required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      const allTranslations = await storage.getProjectTranslations(projectId);
+      const keys = await storage.getProjectKeys(projectId);
+      const languages = await storage.getProjectLanguages(projectId);
+
+      const keyMap = new Map(keys.map(k => [k.id, k]));
+      const langMap = new Map(languages.map(l => [l.id, l]));
+
+      const matches: Array<{
+        translationId: string;
+        keyName: string;
+        languageCode: string;
+        oldValue: string;
+        newValue: string;
+      }> = [];
+
+      for (const translation of allTranslations) {
+        if (languageId && translation.languageId !== languageId) {
+          continue;
+        }
+
+        const value = translation.value;
+        if (!value) continue;
+
+        const hasMatch = caseSensitive
+          ? value.includes(find)
+          : value.toLowerCase().includes(find.toLowerCase());
+
+        if (hasMatch) {
+          const key = keyMap.get(translation.keyId);
+          const lang = langMap.get(translation.languageId);
+
+          let newValue: string;
+          if (caseSensitive) {
+            newValue = value.split(find).join(replace);
+          } else {
+            const regex = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+            newValue = value.replace(regex, replace);
+          }
+
+          matches.push({
+            translationId: translation.id,
+            keyName: key?.key || "Unknown",
+            languageCode: lang?.languageCode || "Unknown",
+            oldValue: value,
+            newValue,
+          });
+
+          if (matches.length >= 100) break;
+        }
+      }
+
+      res.json(matches);
+    } catch (error) {
+      console.error("Error previewing find & replace:", error);
+      res.status(500).json({ message: "Failed to preview find & replace" });
+    }
+  });
+
+  // Find & Replace - Execute endpoint
+  app.post("/api/projects/:id/find-replace", isAuthenticated, async (req: any, res) => {
+    try {
+      const projectId = req.params.id;
+      const { find, replace, languageId, caseSensitive } = req.body;
+
+      if (!find || typeof find !== "string" || find.trim().length === 0) {
+        return res.status(400).json({ message: "Find text is required" });
+      }
+      if (replace === undefined || replace === null || typeof replace !== "string") {
+        return res.status(400).json({ message: "Replace text is required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+
+      const allTranslations = await storage.getProjectTranslations(projectId);
+      let updated = 0;
+
+      for (const translation of allTranslations) {
+        if (languageId && translation.languageId !== languageId) {
+          continue;
+        }
+
+        const value = translation.value;
+        if (!value) continue;
+
+        const hasMatch = caseSensitive
+          ? value.includes(find)
+          : value.toLowerCase().includes(find.toLowerCase());
+
+        if (hasMatch) {
+          let newValue: string;
+          if (caseSensitive) {
+            newValue = value.split(find).join(replace);
+          } else {
+            const regex = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+            newValue = value.replace(regex, replace);
+          }
+
+          await storage.updateTranslation(translation.id, { value: newValue });
+          updated++;
+        }
+      }
+
+      res.json({ updated });
+    } catch (error) {
+      console.error("Error executing find & replace:", error);
+      res.status(500).json({ message: "Failed to execute find & replace" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Sparkles, Loader2, Search, Check, X, History, Plus } from "lucide-react";
+import { Sparkles, Loader2, Search, Check, X, History, Plus, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -307,6 +316,328 @@ const addKeyFormSchema = insertTranslationKeySchema.extend({
 });
 
 type AddKeyFormData = z.infer<typeof addKeyFormSchema>;
+
+interface FindReplaceMatch {
+  translationId: string;
+  keyName: string;
+  languageCode: string;
+  oldValue: string;
+  newValue: string;
+}
+
+function FindReplaceDialog({
+  projectId,
+  languages,
+  onComplete,
+}: {
+  projectId: string;
+  languages: ProjectLanguage[] | undefined;
+  onComplete: () => void;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [findText, setFindText] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [languageFilter, setLanguageFilter] = useState<string>("all");
+  const [matches, setMatches] = useState<FindReplaceMatch[]>([]);
+  const [hasPreview, setHasPreview] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isReplacing, setIsReplacing] = useState(false);
+
+  const resetState = () => {
+    setFindText("");
+    setReplaceText("");
+    setCaseSensitive(false);
+    setLanguageFilter("all");
+    setMatches([]);
+    setHasPreview(false);
+  };
+
+  const handlePreview = async () => {
+    if (!findText.trim()) return;
+    setIsPreviewing(true);
+    setHasPreview(false);
+    try {
+      const body: Record<string, unknown> = {
+        find: findText,
+        replace: replaceText,
+        caseSensitive,
+      };
+      if (languageFilter !== "all") {
+        body.languageId = languageFilter;
+      }
+      const response = await apiRequest(
+        "POST",
+        `/api/projects/${projectId}/find-preview`,
+        body,
+      );
+      const data: FindReplaceMatch[] = await response.json();
+      setMatches(data);
+      setHasPreview(true);
+    } catch (error) {
+      if (error instanceof Error && isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to preview find & replace",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  const handleReplace = async () => {
+    if (!findText.trim()) return;
+    setIsReplacing(true);
+    try {
+      const body: Record<string, unknown> = {
+        find: findText,
+        replace: replaceText,
+        caseSensitive,
+      };
+      if (languageFilter !== "all") {
+        body.languageId = languageFilter;
+      }
+      const response = await apiRequest(
+        "POST",
+        `/api/projects/${projectId}/find-replace`,
+        body,
+      );
+      const data = await response.json();
+      toast({
+        title: "Find & Replace Complete",
+        description: `${data.updated} translation(s) updated`,
+      });
+      onComplete();
+      setOpen(false);
+      resetState();
+    } catch (error) {
+      if (error instanceof Error && isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to execute find & replace",
+        variant: "destructive",
+      });
+    } finally {
+      setIsReplacing(false);
+    }
+  };
+
+  const highlightMatch = (text: string, find: string, isCaseSensitive: boolean) => {
+    if (!find) return <span>{text}</span>;
+    const escapedFind = find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escapedFind})`, isCaseSensitive ? "g" : "gi");
+    const parts = text.split(regex);
+    return (
+      <span>
+        {parts.map((part, i) => {
+          const isMatch = isCaseSensitive
+            ? part === find
+            : part.toLowerCase() === find.toLowerCase();
+          return isMatch ? (
+            <mark key={i} className="bg-yellow-500/30 text-yellow-200 rounded px-0.5">
+              {part}
+            </mark>
+          ) : (
+            <span key={i}>{part}</span>
+          );
+        })}
+      </span>
+    );
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        setOpen(isOpen);
+        if (!isOpen) resetState();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="outline" data-testid="button-find-replace">
+          <ArrowLeftRight className="h-4 w-4 mr-2" />
+          Find & Replace
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Find & Replace</DialogTitle>
+          <DialogDescription>
+            Search and replace text across all translations in this project
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="find-text">Find</Label>
+              <Input
+                id="find-text"
+                placeholder="Text to find..."
+                value={findText}
+                onChange={(e) => {
+                  setFindText(e.target.value);
+                  setHasPreview(false);
+                }}
+                data-testid="input-find"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="replace-text">Replace with</Label>
+              <Input
+                id="replace-text"
+                placeholder="Replacement text..."
+                value={replaceText}
+                onChange={(e) => {
+                  setReplaceText(e.target.value);
+                  setHasPreview(false);
+                }}
+                data-testid="input-replace"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="case-sensitive"
+                checked={caseSensitive}
+                onCheckedChange={(checked) => {
+                  setCaseSensitive(checked === true);
+                  setHasPreview(false);
+                }}
+                data-testid="checkbox-case-sensitive"
+              />
+              <Label htmlFor="case-sensitive" className="text-sm cursor-pointer">
+                Case sensitive
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="language-filter" className="text-sm whitespace-nowrap">
+                Language
+              </Label>
+              <Select
+                value={languageFilter}
+                onValueChange={(val) => {
+                  setLanguageFilter(val);
+                  setHasPreview(false);
+                }}
+              >
+                <SelectTrigger className="w-48" data-testid="select-language-filter">
+                  <SelectValue placeholder="All languages" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All languages</SelectItem>
+                  {languages?.map((lang) => (
+                    <SelectItem key={lang.id} value={lang.id}>
+                      {lang.languageName} ({lang.languageCode})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handlePreview}
+              disabled={!findText.trim() || isPreviewing}
+              variant="secondary"
+              data-testid="button-preview"
+            >
+              {isPreviewing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Search className="h-4 w-4 mr-2" />
+              )}
+              Preview
+            </Button>
+            <Button
+              onClick={handleReplace}
+              disabled={!hasPreview || matches.length === 0 || isReplacing}
+              data-testid="button-replace-all"
+            >
+              {isReplacing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <ArrowLeftRight className="h-4 w-4 mr-2" />
+              )}
+              Replace All
+            </Button>
+            {hasPreview && (
+              <span className="text-sm text-muted-foreground ml-2">
+                {matches.length} match{matches.length !== 1 ? "es" : ""} found
+                {matches.length >= 100 ? " (showing first 100)" : ""}
+              </span>
+            )}
+          </div>
+          {hasPreview && matches.length > 0 && (
+            <ScrollArea className="flex-1 border rounded-md min-h-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-40">Key</TableHead>
+                    <TableHead className="w-20">Language</TableHead>
+                    <TableHead>Old Value</TableHead>
+                    <TableHead>New Value</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {matches.map((match) => (
+                    <TableRow key={match.translationId}>
+                      <TableCell className="font-mono text-xs align-top">
+                        {match.keyName}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs align-top">
+                        {match.languageCode}
+                      </TableCell>
+                      <TableCell className="text-sm align-top">
+                        {highlightMatch(match.oldValue, findText, caseSensitive)}
+                      </TableCell>
+                      <TableCell className="text-sm align-top">
+                        {match.newValue}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          )}
+          {hasPreview && matches.length === 0 && (
+            <div className="py-8 text-center text-muted-foreground">
+              No matches found
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function TranslationEditor() {
   const { id } = useParams<{ id: string }>();
@@ -919,6 +1250,15 @@ export default function TranslationEditor() {
               data-testid="input-search"
             />
           </div>
+          <FindReplaceDialog
+            projectId={id!}
+            languages={languages}
+            onComplete={() => {
+              queryClient.invalidateQueries({
+                queryKey: ["/api/projects", id, "translations"],
+              });
+            }}
+          />
           <Dialog open={isAddKeyDialogOpen} onOpenChange={setIsAddKeyDialogOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-add-key">
