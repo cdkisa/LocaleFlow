@@ -1,0 +1,29 @@
+{
+  "findReplace": {
+    "title": "Rechercher et remplacer",
+    "description": "Rechercher et remplacer du texte dans toutes les traductions de ce projet",
+    "buttonLabel": "Rechercher et remplacer",
+    "findPlaceholder": "Texte \u00e0 rechercher...",
+    "replacePlaceholder": "Texte de remplacement...",
+    "findLabel": "Rechercher",
+    "replaceLabel": "Remplacer par",
+    "caseSensitive": "Sensible \u00e0 la casse",
+    "languageLabel": "Langue",
+    "allLanguages": "Toutes les langues",
+    "preview": "Aper\u00e7u",
+    "replaceAll": "Tout remplacer",
+    "matchesFound": "{{count}} correspondance trouv\u00e9e",
+    "matchesFound_plural": "{{count}} correspondances trouv\u00e9es",
+    "showingFirst100": "(affichage des 100 premiers)",
+    "noMatchesFound": "Aucune correspondance trouv\u00e9e",
+    "complete": "Rechercher et remplacer termin\u00e9",
+    "updatedCount": "{{count}} traduction(s) mise(s) \u00e0 jour",
+    "error": "Erreur",
+    "previewError": "\u00c9chec de l'aper\u00e7u de rechercher et remplacer",
+    "replaceError": "\u00c9chec de l'ex\u00e9cution de rechercher et remplacer",
+    "columnKey": "Cl\u00e9",
+    "columnLanguage": "Langue",
+    "columnOldValue": "Ancienne valeur",
+    "columnNewValue": "Nouvelle valeur"
+  }
+}
