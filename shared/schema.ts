@@ -251,10 +251,38 @@ export const insertTranslationMemorySchema = createInsertSchema(translationMemor
 export type InsertTranslationMemory = z.infer<typeof insertTranslationMemorySchema>;
 export type TranslationMemory = typeof translationMemory.$inferSelect;
 
+// API Keys - for programmatic REST API access (CI/CD, CLI tools)
+export const apiKeys = pgTable("api_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  keyHash: varchar("key_hash").notNull(),
+  keyPrefix: varchar("key_prefix", { length: 8 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [apiKeys.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
+export type ApiKey = typeof apiKeys.$inferSelect;
+
 // User relations
 export const usersRelations = relations(users, ({ many }) => ({
   ownedProjects: many(projects),
   projectMemberships: many(projectMembers),
   translations: many(translations),
   uploadedDocuments: many(documents),
+  apiKeys: many(apiKeys),
 }));

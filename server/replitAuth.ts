@@ -129,9 +129,40 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // First, check for API key authentication via Bearer token
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const rawKey = authHeader.slice(7);
+    if (rawKey) {
+      try {
+        const crypto = await import("crypto");
+        const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+        const { storage } = await import("./storage");
+        const apiKey = await storage.getApiKeyByHash(keyHash);
+        if (apiKey) {
+          // Check if key is expired
+          if (apiKey.expiresAt && new Date(apiKey.expiresAt) < new Date()) {
+            return res.status(401).json({ message: "API key has expired" });
+          }
+          // Set req.user to mimic session auth structure
+          (req as any).user = {
+            claims: { sub: apiKey.userId },
+            isApiKey: true,
+          };
+          // Update last used timestamp (fire and forget)
+          storage.updateApiKeyLastUsed(apiKey.id).catch(() => {});
+          return next();
+        }
+      } catch (error) {
+        // Fall through to session auth check
+      }
+    }
+  }
+
+  // Fall back to session-based authentication
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated() || !user?.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 

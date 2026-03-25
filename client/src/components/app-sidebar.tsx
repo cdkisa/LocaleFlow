@@ -1,4 +1,4 @@
-import { Home, FolderOpen, Settings, LogOut, Languages } from "lucide-react";
+import { Home, FolderOpen, Settings, LogOut, Languages, Key } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -25,6 +25,11 @@ const menuItems = [
     title: "Projects",
     url: "/projects",
     icon: FolderOpen,
+  },
+  {
+    title: "API Keys",
+    url: "/api-keys",
+    icon: Key,
   },
 ];
 

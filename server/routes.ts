@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import {
@@ -1447,6 +1448,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error executing find & replace:", error);
       res.status(500).json({ message: "Failed to execute find & replace" });
+    }
+  });
+
+  // API Key management endpoints
+  app.post("/api/api-keys", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { name } = req.body;
+
+      if (!name || typeof name !== "string" || name.trim().length === 0) {
+        return res.status(400).json({ message: "API key name is required" });
+      }
+
+      // Generate a random API key
+      const rawKey = crypto.randomBytes(32).toString("hex");
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.substring(0, 8);
+
+      const apiKey = await storage.createApiKey({
+        userId,
+        name: name.trim(),
+        keyHash,
+        keyPrefix,
+        lastUsedAt: null,
+        expiresAt: null,
+      });
+
+      // Return the raw key ONLY on creation - it cannot be retrieved later
+      res.json({
+        id: apiKey.id,
+        name: apiKey.name,
+        keyPrefix: apiKey.keyPrefix,
+        createdAt: apiKey.createdAt,
+        rawKey, // Only returned once
+      });
+    } catch (error) {
+      console.error("Error creating API key:", error);
+      res.status(500).json({ message: "Failed to create API key" });
+    }
+  });
+
+  app.get("/api/api-keys", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const keys = await storage.getApiKeysByUser(userId);
+
+      // Never return the full key hash - only prefix and metadata
+      const sanitizedKeys = keys.map((k) => ({
+        id: k.id,
+        name: k.name,
+        keyPrefix: k.keyPrefix,
+        createdAt: k.createdAt,
+        lastUsedAt: k.lastUsedAt,
+        expiresAt: k.expiresAt,
+      }));
+
+      res.json(sanitizedKeys);
+    } catch (error) {
+      console.error("Error fetching API keys:", error);
+      res.status(500).json({ message: "Failed to fetch API keys" });
+    }
+  });
+
+  app.delete("/api/api-keys/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+
+      // Verify the key belongs to the user
+      const keys = await storage.getApiKeysByUser(userId);
+      const keyToDelete = keys.find((k) => k.id === req.params.id);
+
+      if (!keyToDelete) {
+        return res.status(404).json({ message: "API key not found" });
+      }
+
+      await storage.deleteApiKey(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting API key:", error);
+      res.status(500).json({ message: "Failed to delete API key" });
     }
   });
 

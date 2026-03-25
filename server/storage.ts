@@ -8,6 +8,7 @@ import {
   projectMembers,
   documents,
   translationMemory,
+  apiKeys,
   type User,
   type UpsertUser,
   type Project,
@@ -24,6 +25,8 @@ import {
   type InsertDocument,
   type TranslationMemory,
   type InsertTranslationMemory,
+  type ApiKey,
+  type InsertApiKey,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -76,6 +79,13 @@ export interface IStorage {
   // Translation Memory operations
   upsertTranslationMemory(memory: InsertTranslationMemory): Promise<TranslationMemory>;
   findTranslationMemorySuggestion(sourceText: string, targetLanguageCode: string): Promise<TranslationMemory | undefined>;
+
+  // API Key operations
+  createApiKey(apiKey: InsertApiKey): Promise<ApiKey>;
+  getApiKeysByUser(userId: string): Promise<ApiKey[]>;
+  getApiKeyByHash(hash: string): Promise<ApiKey | undefined>;
+  deleteApiKey(id: string): Promise<void>;
+  updateApiKeyLastUsed(id: string): Promise<void>;
 
   // Stats
   getUserStats(userId: string): Promise<{
@@ -343,6 +353,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDocument(id: string): Promise<void> {
     await db.delete(documents).where(eq(documents.id, id));
+  }
+
+  // API Key operations
+  async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
+    const [newApiKey] = await db.insert(apiKeys).values(apiKey).returning();
+    return newApiKey;
+  }
+
+  async getApiKeysByUser(userId: string): Promise<ApiKey[]> {
+    return await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.userId, userId))
+      .orderBy(desc(apiKeys.createdAt));
+  }
+
+  async getApiKeyByHash(hash: string): Promise<ApiKey | undefined> {
+    const [apiKey] = await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.keyHash, hash));
+    return apiKey;
+  }
+
+  async deleteApiKey(id: string): Promise<void> {
+    await db.delete(apiKeys).where(eq(apiKeys.id, id));
+  }
+
+  async updateApiKeyLastUsed(id: string): Promise<void> {
+    await db
+      .update(apiKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiKeys.id, id));
   }
 
   // Stats
