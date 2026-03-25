@@ -10,6 +10,7 @@ import {
   projectHyperlinks,
   translationKeyHyperlinks,
   translationKeyChangeHistory,
+  apiKeys,
   type User,
   type UpsertUser,
   type Project,
@@ -32,6 +33,8 @@ import {
   type InsertTranslationKeyHyperlink,
   type TranslationKeyChangeHistory,
   type InsertTranslationKeyChangeHistory,
+  type ApiKey,
+  type InsertApiKey,
 } from "@shared/schema";
 import * as schema from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -609,5 +612,37 @@ export class PostgresStorage implements IStorage {
         eq(translationKeyChangeHistory.translationKeyId, translationKeyId),
       )
       .orderBy(desc(translationKeyChangeHistory.createdAt));
+  }
+
+  async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
+    const [newKey] = await db.insert(apiKeys).values(apiKey).returning();
+    return newKey;
+  }
+
+  async getApiKeysByUser(userId: string): Promise<ApiKey[]> {
+    return await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.userId, userId))
+      .orderBy(desc(apiKeys.createdAt));
+  }
+
+  async getApiKeyByHash(hash: string): Promise<ApiKey | undefined> {
+    const [key] = await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.keyHash, hash));
+    return key;
+  }
+
+  async deleteApiKey(id: string): Promise<void> {
+    await db.delete(apiKeys).where(eq(apiKeys.id, id));
+  }
+
+  async updateApiKeyLastUsed(id: string): Promise<void> {
+    await db
+      .update(apiKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiKeys.id, id));
   }
 }

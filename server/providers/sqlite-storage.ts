@@ -10,6 +10,7 @@ import {
   projectHyperlinks,
   translationKeyHyperlinks,
   translationKeyChangeHistory,
+  apiKeys,
 } from "../../shared/schema-sqlite";
 import * as schema from "../../shared/schema-sqlite";
 import {
@@ -35,6 +36,8 @@ import {
   type InsertTranslationKeyHyperlink,
   type TranslationKeyChangeHistory,
   type InsertTranslationKeyChangeHistory,
+  type ApiKey,
+  type InsertApiKey,
 } from "@shared/schema";
 import { eq, and, desc, sql, like, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -52,6 +55,146 @@ sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
 const db = drizzle(sqlite, { schema });
+
+// Auto-create tables if they don't exist (enables fresh-start without drizzle-kit push)
+function initializeSchema() {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid TEXT PRIMARY KEY,
+      sess TEXT NOT NULL,
+      expire TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS IDX_session_expire ON sessions(expire);
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE,
+      first_name TEXT,
+      last_name TEXT,
+      profile_image_url TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS project_languages (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      language_code TEXT NOT NULL,
+      language_name TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      created_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS translation_keys (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      description TEXT,
+      max_length INTEGER,
+      priority TEXT NOT NULL DEFAULT 'normal',
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS translations (
+      id TEXT PRIMARY KEY,
+      key_id TEXT NOT NULL REFERENCES translation_keys(id) ON DELETE CASCADE,
+      language_id TEXT NOT NULL REFERENCES project_languages(id) ON DELETE CASCADE,
+      value TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      translated_by TEXT REFERENCES users(id),
+      reviewed_by TEXT REFERENCES users(id),
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS project_members (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      created_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      file_type TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      storage_path TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      extracted_text TEXT,
+      error_message TEXT,
+      uploaded_by TEXT NOT NULL REFERENCES users(id),
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS translation_memory (
+      id TEXT PRIMARY KEY,
+      source_text TEXT NOT NULL,
+      target_language_code TEXT NOT NULL,
+      translated_text TEXT NOT NULL,
+      usage_count INTEGER NOT NULL DEFAULT 1,
+      last_used_at TEXT,
+      created_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS tm_source_target_unique ON translation_memory(source_text, target_language_code);
+
+    CREATE TABLE IF NOT EXISTS project_hyperlinks (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      url TEXT NOT NULL,
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS translation_key_hyperlinks (
+      id TEXT PRIMARY KEY,
+      translation_key_id TEXT NOT NULL REFERENCES translation_keys(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      url TEXT NOT NULL,
+      created_at TEXT,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS translation_key_change_history (
+      id TEXT PRIMARY KEY,
+      translation_key_id TEXT NOT NULL REFERENCES translation_keys(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      action TEXT NOT NULL,
+      field TEXT,
+      old_value TEXT,
+      new_value TEXT,
+      created_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      key_hash TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      created_at TEXT,
+      last_used_at TEXT,
+      expires_at TEXT
+    );
+  `);
+  console.log("[sqlite] Schema initialized.");
+}
+
+initializeSchema();
 
 // Helper: convert Date to ISO string for SQLite storage
 function toIso(d?: Date | null): string | undefined {
@@ -651,5 +794,38 @@ export class SqliteStorage implements IStorage {
       )
       .orderBy(desc(translationKeyChangeHistory.createdAt));
     return mapDatesList(results);
+  }
+
+  async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
+    const [newKey] = await db.insert(apiKeys).values(apiKey).returning();
+    return mapDates(newKey);
+  }
+
+  async getApiKeysByUser(userId: string): Promise<ApiKey[]> {
+    const results = await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.userId, userId))
+      .orderBy(desc(apiKeys.createdAt));
+    return mapDatesList(results);
+  }
+
+  async getApiKeyByHash(hash: string): Promise<ApiKey | undefined> {
+    const [key] = await db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.keyHash, hash));
+    return key ? mapDates(key) : undefined;
+  }
+
+  async deleteApiKey(id: string): Promise<void> {
+    await db.delete(apiKeys).where(eq(apiKeys.id, id));
+  }
+
+  async updateApiKeyLastUsed(id: string): Promise<void> {
+    await db
+      .update(apiKeys)
+      .set({ lastUsedAt: new Date().toISOString() })
+      .where(eq(apiKeys.id, id));
   }
 }

@@ -238,10 +238,30 @@ export const translationKeyChangeHistoryRelations = relations(translationKeyChan
   }),
 }));
 
+// API Keys
+export const apiKeys = sqliteTable("api_keys", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull(),
+  keyPrefix: text("key_prefix").notNull(),
+  createdAt: text("created_at").$defaultFn(() => new Date().toISOString()),
+  lastUsedAt: text("last_used_at"),
+  expiresAt: text("expires_at"),
+});
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  user: one(users, {
+    fields: [apiKeys.userId],
+    references: [users.id],
+  }),
+}));
+
 // User relations
 export const usersRelations = relations(users, ({ many }) => ({
   ownedProjects: many(projects),
   projectMemberships: many(projectMembers),
   translations: many(translations),
   uploadedDocuments: many(documents),
+  apiKeys: many(apiKeys),
 }));
