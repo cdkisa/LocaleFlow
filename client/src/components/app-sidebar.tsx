@@ -6,6 +6,7 @@ import {
   LogOut,
   Languages,
   ChevronRight,
+  Key,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -47,6 +48,11 @@ export function AppSidebar() {
       title: t("nav.dashboard"),
       url: "/",
       icon: Home,
+    },
+    {
+      title: "API Keys",
+      url: "/api-keys",
+      icon: Key,
     },
   ];
 

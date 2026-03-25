@@ -21,6 +21,8 @@ import {
   type InsertTranslationKeyHyperlink,
   type TranslationKeyChangeHistory,
   type InsertTranslationKeyChangeHistory,
+  type ApiKey,
+  type InsertApiKey,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -95,6 +97,13 @@ export interface IStorage {
   // Translation key change history operations
   createTranslationKeyChangeHistory(change: InsertTranslationKeyChangeHistory): Promise<TranslationKeyChangeHistory>;
   getTranslationKeyChangeHistory(translationKeyId: string): Promise<TranslationKeyChangeHistory[]>;
+
+  // API Key operations
+  createApiKey(apiKey: InsertApiKey): Promise<ApiKey>;
+  getApiKeysByUser(userId: string): Promise<ApiKey[]>;
+  getApiKeyByHash(hash: string): Promise<ApiKey | undefined>;
+  deleteApiKey(id: string): Promise<void>;
+  updateApiKeyLastUsed(id: string): Promise<void>;
 
   // Stats
   getUserStats(userId: string): Promise<{
