@@ -1,0 +1,13 @@
+{
+  "welcome": "Welcome Back",
+  "subtitle": "Manage your localization projects and translations",
+  "stats.totalProjects": "Total Projects",
+  "stats.languages": "Languages",
+  "stats.translationKeys": "Translation Keys",
+  "stats.recentActivity": "Recent Activity",
+  "projects": "Projects",
+  "newProject": "New Project",
+  "viewTranslations": "View translations",
+  "empty.title": "No projects yet",
+  "empty.description": "Create your first localization project to start managing translations"
+}

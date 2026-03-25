@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Plus, FolderOpen, Languages, FileText, TrendingUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,6 +8,8 @@ import { Link } from "wouter";
 import type { Project } from "@shared/schema";
 
 export default function Dashboard() {
+  const { t } = useTranslation("dashboard");
+  const { t: tc } = useTranslation("common");
   const { data: projects, isLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
   });
@@ -24,9 +27,9 @@ export default function Dashboard() {
     <div className="space-y-8">
       {/* Welcome Header */}
       <div>
-        <h1 className="text-3xl font-semibold mb-2">Welcome Back</h1>
+        <h1 className="text-3xl font-semibold mb-2">{t("welcome")}</h1>
         <p className="text-muted-foreground">
-          Manage your localization projects and translations
+          {t("subtitle")}
         </p>
       </div>
 
@@ -34,7 +37,7 @@ export default function Dashboard() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("stats.totalProjects")}</CardTitle>
             <FolderOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -46,7 +49,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Languages</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("stats.languages")}</CardTitle>
             <Languages className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -58,7 +61,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Translation Keys</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("stats.translationKeys")}</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -70,7 +73,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("stats.recentActivity")}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -84,11 +87,11 @@ export default function Dashboard() {
       {/* Projects Section */}
       <div>
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-semibold">Projects</h2>
+          <h2 className="text-2xl font-semibold">{t("projects")}</h2>
           <Button asChild data-testid="button-create-project">
             <Link href="/projects/new">
               <Plus className="mr-2 h-4 w-4" />
-              New Project
+              {t("newProject")}
             </Link>
           </Button>
         </div>
@@ -123,7 +126,7 @@ export default function Dashboard() {
                   <CardContent>
                     <div className="flex items-center text-sm text-muted-foreground">
                       <Languages className="mr-2 h-4 w-4" />
-                      <span>View translations</span>
+                      <span>{t("viewTranslations")}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -134,14 +137,14 @@ export default function Dashboard() {
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-16">
               <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No projects yet</h3>
+              <h3 className="text-lg font-medium mb-2">{t("empty.title")}</h3>
               <p className="text-sm text-muted-foreground mb-6 text-center max-w-md">
-                Create your first localization project to start managing translations
+                {t("empty.description")}
               </p>
               <Button asChild data-testid="button-create-first-project">
                 <Link href="/projects/new">
                   <Plus className="mr-2 h-4 w-4" />
-                  Create Project
+                  {tc("actions.createProject")}
                 </Link>
               </Button>
             </CardContent>

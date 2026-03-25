@@ -1,9 +1,16 @@
 import { useState } from "react";
-import { useParams } from "wouter";
+import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Download, FileJson, FileSpreadsheet } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { ArrowLeft, Download, FileJson, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,6 +20,8 @@ import type { ProjectLanguage } from "@shared/schema";
 export default function ExportTranslations() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { t } = useTranslation("project");
+  const { t: tc } = useTranslation("common");
   const [format, setFormat] = useState<"json" | "csv">("json");
   const [useNestedNamespaces, setUseNestedNamespaces] = useState(false);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
@@ -24,15 +33,17 @@ export default function ExportTranslations() {
 
   const toggleLanguage = (langId: string) => {
     setSelectedLanguages((prev) =>
-      prev.includes(langId) ? prev.filter((l) => l !== langId) : [...prev, langId]
+      prev.includes(langId)
+        ? prev.filter((l) => l !== langId)
+        : [...prev, langId]
     );
   };
 
   const handleExport = async () => {
     if (selectedLanguages.length === 0) {
       toast({
-        title: "Error",
-        description: "Please select at least one language",
+        title: tc("toast.error"),
+        description: t("export.selectAtLeastOne"),
         variant: "destructive",
       });
       return;
@@ -44,7 +55,7 @@ export default function ExportTranslations() {
         format,
         languages: selectedLanguages.join(","),
       });
-      
+
       if (format === "json" && useNestedNamespaces) {
         params.append("nested", "true");
       }
@@ -66,13 +77,13 @@ export default function ExportTranslations() {
       document.body.removeChild(a);
 
       toast({
-        title: "Success",
-        description: "Translations exported successfully",
+        title: tc("toast.success"),
+        description: t("export.exported"),
       });
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to export translations",
+        title: tc("toast.error"),
+        description: t("export.failedExport"),
         variant: "destructive",
       });
     } finally {
@@ -83,48 +94,76 @@ export default function ExportTranslations() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold mb-2">Export Translations</h1>
+        <Link href={`/projects/${id}`}>
+          <Button variant="ghost" size="sm" className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {tc("actions.backToProject")}
+          </Button>
+        </Link>
+        <h1 className="text-3xl font-semibold mb-2">{t("export.title")}</h1>
         <p className="text-muted-foreground">
-          Download your translations in JSON or CSV format
+          {t("export.subtitle")}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Format</CardTitle>
-          <CardDescription>Choose the export format</CardDescription>
+          <CardTitle>{t("export.selectFormat")}</CardTitle>
+          <CardDescription>{t("export.selectFormatDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <RadioGroup value={format} onValueChange={(v) => setFormat(v as "json" | "csv")}>
+          <RadioGroup
+            value={format}
+            onValueChange={(v) => setFormat(v as "json" | "csv")}
+          >
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="json" id="json-export" data-testid="radio-format-json" />
-              <Label htmlFor="json-export" className="flex items-center gap-2 cursor-pointer">
+              <RadioGroupItem
+                value="json"
+                id="json-export"
+                data-testid="radio-format-json"
+              />
+              <Label
+                htmlFor="json-export"
+                className="flex items-center gap-2 cursor-pointer"
+              >
                 <FileJson className="h-4 w-4" />
-                JSON - Multi-language format
+                {t("export.jsonFormat")}
               </Label>
             </div>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="csv" id="csv-export" data-testid="radio-format-csv" />
-              <Label htmlFor="csv-export" className="flex items-center gap-2 cursor-pointer">
+              <RadioGroupItem
+                value="csv"
+                id="csv-export"
+                data-testid="radio-format-csv"
+              />
+              <Label
+                htmlFor="csv-export"
+                className="flex items-center gap-2 cursor-pointer"
+              >
                 <FileSpreadsheet className="h-4 w-4" />
-                CSV - Spreadsheet format for easy editing
+                {t("export.csvFormat")}
               </Label>
             </div>
           </RadioGroup>
-          
+
           {format === "json" && (
             <div className="mt-4 pt-4 border-t">
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="nested-namespaces"
                   checked={useNestedNamespaces}
-                  onCheckedChange={(checked) => setUseNestedNamespaces(checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    setUseNestedNamespaces(checked as boolean)
+                  }
                   data-testid="checkbox-nested-namespaces"
                 />
-                <Label htmlFor="nested-namespaces" className="cursor-pointer font-normal">
-                  Use nested namespaces
+                <Label
+                  htmlFor="nested-namespaces"
+                  className="cursor-pointer font-normal"
+                >
+                  {t("export.nestedNamespaces")}
                   <p className="text-xs text-muted-foreground mt-1">
-                    Convert dot-separated keys to nested objects (e.g., "greeting.hello" → {`{ "greeting": { "hello": "..." } }`})
+                    {t("export.nestedNamespacesDesc")}
                   </p>
                 </Label>
               </div>
@@ -135,8 +174,10 @@ export default function ExportTranslations() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Languages</CardTitle>
-          <CardDescription>Choose which languages to include in the export</CardDescription>
+          <CardTitle>{t("export.selectLanguages")}</CardTitle>
+          <CardDescription>
+            {t("export.selectLanguagesDesc")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -153,9 +194,13 @@ export default function ExportTranslations() {
                   className="flex items-center gap-2 cursor-pointer font-normal"
                 >
                   <span className="font-mono text-sm">{lang.languageCode}</span>
-                  <span className="text-sm text-muted-foreground">{lang.languageName}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {lang.languageName}
+                  </span>
                   {lang.isDefault && (
-                    <span className="text-xs text-muted-foreground">(default)</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({tc("labels.default")})
+                    </span>
                   )}
                 </Label>
               </div>
@@ -171,14 +216,14 @@ export default function ExportTranslations() {
           data-testid="button-export"
         >
           <Download className="mr-2 h-4 w-4" />
-          {isExporting ? "Exporting..." : "Export Translations"}
+          {isExporting ? tc("actions.exporting") : t("export.title")}
         </Button>
         <Button
           variant="outline"
           onClick={() => window.history.back()}
           data-testid="button-cancel"
         >
-          Cancel
+          {tc("actions.cancel")}
         </Button>
       </div>
     </div>

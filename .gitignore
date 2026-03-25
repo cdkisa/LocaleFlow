@@ -4,3 +4,10 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+.local-storage
+.env
+.claude/worktrees/
+.claude/settings.local.json
+playwright-report/
+test-results/
+.playwright-mcp/

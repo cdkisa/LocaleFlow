@@ -77,5 +77,11 @@
   "toast.noSourceText": "No source text",
   "toast.bulkComplete": "Bulk Translation Complete",
   "toast.keyDeleted": "Translation key deleted successfully",
-  "toast.keysDeleted": "Deleted {{count}} key(s) successfully"
+  "toast.keysDeleted": "Deleted {{count}} key(s) successfully",
+
+  "priorityFilter": "Filter by priority",
+  "allPriorities": "All priorities",
+  "priorityLabel": "Priority",
+  "addKeyDialogTitle": "Add Translation Key",
+  "addKeyDialogDescription": "Create a new translation key for your project"
 }

@@ -1,10 +1,11 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: false, limit: "50mb" }));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -39,6 +40,14 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
+  // Add middleware to log all API requests before Vite
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api")) {
+      console.log(`[API Request] ${req.method} ${req.path}`);
+    }
+    next();
+  });
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -61,11 +70,30 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
+  const listenOptions: any = {
     port,
     host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  };
+  
+  // reusePort is only supported on Linux, skip on Windows/macOS
+  if (process.platform === 'linux') {
+    listenOptions.reusePort = true;
+  }
+  
+  server.listen(listenOptions, () => {
+    const url = `http://localhost:${port}`;
     log(`serving on port ${port}`);
+    log(`\n  ➜  Local: ${url}\n`);
+
+    // Auto-open browser in development
+    if (app.get("env") === "development") {
+      import("child_process").then(({ exec }) => {
+        const openCmd =
+          process.platform === "win32" ? `start ${url}` :
+          process.platform === "darwin" ? `open ${url}` :
+          `xdg-open ${url}`;
+        exec(openCmd);
+      });
+    }
   });
 })();

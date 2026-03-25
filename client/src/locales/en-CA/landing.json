@@ -1,0 +1,19 @@
+{
+  "signIn": "Sign In",
+  "hero.title1": "Localization Management",
+  "hero.title2": "Made Simple",
+  "hero.subtitle": "Manage translations across multiple projects and languages with collaborative workflows, version control, and seamless import/export capabilities.",
+  "hero.cta": "Get Started Free",
+  "features.multiProject": "Multi-Project Support",
+  "features.multiProjectDesc": "Organize and manage translations for multiple projects from a single dashboard.",
+  "features.collaborative": "Collaborative Workflow",
+  "features.collaborativeDesc": "Work together with developers, translators, and reviewers with role-based permissions.",
+  "features.importExport": "Import & Export",
+  "features.importExportDesc": "Seamlessly import and export translations in JSON and CSV formats.",
+  "features.aiTranslation": "AI Translation",
+  "features.aiTranslationDesc": "Get instant translation suggestions powered by Google Translate API.",
+  "features.versionControl": "Version Control",
+  "features.versionControlDesc": "Track translation history and status with draft, review, and approved states.",
+  "features.multiLanguage": "Multi-Language",
+  "features.multiLanguageDesc": "Support for any language including regional variants like French Canadian."
+}

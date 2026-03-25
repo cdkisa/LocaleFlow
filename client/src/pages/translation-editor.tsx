@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "wouter";
-import { useState, useEffect } from "react";
-import { Sparkles, Loader2, Search, Check, X, History, Plus, ArrowLeftRight } from "lucide-react";
+import { useParams, Link } from "wouter";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Sparkles, Loader2, Search, Check, X, History, Plus, ArrowLeftRight, Filter, Languages, ArrowLeft, FolderTree, List, Tag, ArrowUp, HelpCircle, ArrowRight, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -39,21 +40,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { buildKeyTree, filterTree, getKeysInFolder } from "@/lib/keyTreeUtils";
+import { KeyFolderView } from "@/components/KeyFolderTree";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertTranslationKeySchema } from "@shared/schema";
 import { z } from "zod";
+import { useTranslation } from "react-i18next";
 import type {
   ProjectLanguage,
   TranslationKey,
   Translation,
   TranslationMemory,
+  TranslationStatus,
 } from "@shared/schema";
+import { getNextStatuses } from "@shared/schema";
 
 interface TranslationData {
   [keyId: string]: {
@@ -70,6 +79,33 @@ const statusColors = {
   in_review: "bg-chart-3/10 text-chart-3 border-chart-3/20",
   approved: "bg-chart-2/10 text-chart-2 border-chart-2/20",
 };
+
+const priorityColors: Record<string, string> = {
+  critical: "bg-red-500/10 text-red-500 border-red-500/30",
+  high: "bg-orange-500/10 text-orange-500 border-orange-500/30",
+  normal: "",
+  low: "bg-slate-500/10 text-slate-400 border-slate-500/30",
+};
+
+const priorityLabels: Record<string, string> = {
+  critical: "Critical",
+  high: "High",
+  normal: "Normal",
+  low: "Low",
+};
+
+function PriorityBadge({ priority }: { priority: string }) {
+  if (!priority || priority === "normal") return null;
+  return (
+    <Badge
+      variant="outline"
+      className={priorityColors[priority] || ""}
+      data-testid={`badge-priority-${priority}`}
+    >
+      {priorityLabels[priority] || priority}
+    </Badge>
+  );
+}
 
 function HighlightedText({ text }: { text: string }) {
   if (!text) return null;
@@ -110,6 +146,7 @@ function TranslationCell({
   onUpdate,
   onSave,
   onAISuggest,
+  onStatusChange,
   isDefault,
   isSaving,
   isSuggesting,
@@ -122,10 +159,13 @@ function TranslationCell({
   onUpdate: (keyId: string, languageId: string, value: string) => void;
   onSave: (keyId: string, languageId: string) => Promise<void>;
   onAISuggest: (keyId: string, languageId: string) => void;
+  onStatusChange: (keyId: string, languageId: string, newStatus: TranslationStatus) => Promise<void>;
   isDefault: boolean;
   isSaving: boolean;
   isSuggesting: boolean;
 }) {
+  const { t } = useTranslation("editor");
+  const { t: tc } = useTranslation("common");
   const [isEditing, setIsEditing] = useState(false);
   const [originalValue, setOriginalValue] = useState("");
   const [memorySuggestion, setMemorySuggestion] = useState<TranslationMemory | null>(null);
@@ -199,7 +239,7 @@ function TranslationCell({
           <Textarea
             value={value}
             onChange={(e) => onUpdate(keyId, language.id, e.target.value)}
-            placeholder="Enter translation..."
+            placeholder={t("translationPlaceholder")}
             autoFocus
             rows={1}
             data-testid={`input-translation-${keyId}-${language.id}`}
@@ -216,7 +256,7 @@ function TranslationCell({
             <div className="flex items-center gap-2 p-2 rounded-md bg-chart-1/10 border border-chart-1/30">
               <History className="h-3.5 w-3.5 text-chart-1" />
               <span className="text-xs text-muted-foreground flex-1">
-                Translation Memory: <span className="text-foreground">{memorySuggestion.translatedText}</span>
+                {t("translationMemory")} <span className="text-foreground">{memorySuggestion.translatedText}</span>
               </span>
               <Button
                 variant="ghost"
@@ -224,7 +264,7 @@ function TranslationCell({
                 onClick={handleApplyMemory}
                 data-testid={`button-apply-memory-${keyId}-${language.id}`}
               >
-                Apply
+                {tc("actions.apply")}
               </Button>
             </div>
           )}
@@ -233,7 +273,7 @@ function TranslationCell({
               variant="outline"
               className={statusColors[status as keyof typeof statusColors]}
             >
-              {status.replace("_", " ")}
+              {tc("status." + status)}
             </Badge>
             <div className="flex-1" />
             <Button
@@ -243,7 +283,7 @@ function TranslationCell({
               disabled={isSaving}
               data-testid={`button-cancel-${keyId}-${language.id}`}
             >
-              Cancel
+              {tc("actions.cancel")}
             </Button>
             <Button
               size="sm"
@@ -256,7 +296,7 @@ function TranslationCell({
               ) : (
                 <Check className="h-3.5 w-3.5 mr-2" />
               )}
-              Save
+              {tc("actions.save")}
             </Button>
           </div>
         </div>
@@ -273,13 +313,27 @@ function TranslationCell({
               <span className="text-sm text-destructive">Empty</span>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
             <Badge
               variant="outline"
               className={statusColors[status as keyof typeof statusColors]}
+              data-testid={`badge-status-${keyId}-${language.id}`}
             >
-              {status.replace("_", " ")}
+              {tc("status." + status)}
             </Badge>
+            {hasValue && getNextStatuses(status).map((nextStatus) => (
+              <Button
+                key={nextStatus}
+                variant="outline"
+                size="sm"
+                className="h-6 text-xs px-2"
+                onClick={() => onStatusChange(keyId, language.id, nextStatus)}
+                disabled={isSaving}
+                data-testid={`button-transition-${nextStatus}-${keyId}-${language.id}`}
+              >
+                {tc("transition." + status + "-" + nextStatus)}
+              </Button>
+            ))}
             {maxLength && hasValue && (
               <span
                 className={`text-xs font-mono ${charCountColor}`}
@@ -311,6 +365,83 @@ function TranslationCell({
   );
 }
 
+function WorkflowVisual() {
+  const { t: tc } = useTranslation("common");
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-workflow-help">
+          <HelpCircle className="h-4 w-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[420px] p-5" align="end">
+        <h4 className="font-semibold text-sm mb-1">Translation Workflow</h4>
+        <p className="text-xs text-muted-foreground mb-4">
+          Each translation moves through these stages
+        </p>
+
+        {/* SVG workflow diagram */}
+        <svg viewBox="0 0 380 170" className="w-full" aria-label="Workflow diagram">
+          {/* Forward path arrows */}
+          <line x1="95" y1="40" x2="135" y2="40" stroke="currentColor" className="text-muted-foreground" strokeWidth="1.5" markerEnd="url(#arrow)" />
+          <line x1="245" y1="40" x2="285" y2="40" stroke="currentColor" className="text-muted-foreground" strokeWidth="1.5" markerEnd="url(#arrow)" />
+
+          {/* Return path: In Review -> Draft (curved below) */}
+          <path d="M 170 58 C 170 90, 50 90, 50 58" fill="none" stroke="currentColor" className="text-muted-foreground" strokeWidth="1" strokeDasharray="4 2" markerEnd="url(#arrow-sm)" />
+
+          {/* Return path: Approved -> Draft (curved further below) */}
+          <path d="M 320 58 C 320 120, 50 120, 50 58" fill="none" stroke="currentColor" className="text-muted-foreground" strokeWidth="1" strokeDasharray="4 2" markerEnd="url(#arrow-sm)" />
+
+          {/* State boxes */}
+          <rect x="5" y="22" width="90" height="36" rx="8" className="fill-slate-500/10 stroke-slate-500/20" strokeWidth="1" />
+          <text x="50" y="45" textAnchor="middle" className="fill-slate-400 text-[12px] font-semibold">{tc("status.draft")}</text>
+
+          <rect x="140" y="22" width="100" height="36" rx="8" className="fill-chart-3/10 stroke-chart-3/20" strokeWidth="1" />
+          <text x="190" y="45" textAnchor="middle" className="fill-chart-3 text-[12px] font-semibold">{tc("status.in_review")}</text>
+
+          <rect x="290" y="22" width="85" height="36" rx="8" className="fill-chart-2/10 stroke-chart-2/20" strokeWidth="1" />
+          <text x="332" y="45" textAnchor="middle" className="fill-chart-2 text-[12px] font-semibold">{tc("status.approved")}</text>
+
+          {/* Forward labels */}
+          <text x="115" y="33" textAnchor="middle" className="fill-muted-foreground text-[9px]">{tc("transition.draft-in_review")}</text>
+          <text x="265" y="33" textAnchor="middle" className="fill-muted-foreground text-[9px]">{tc("transition.in_review-approved")}</text>
+
+          {/* Return labels */}
+          <text x="110" y="98" textAnchor="middle" className="fill-muted-foreground text-[9px]">{tc("transition.in_review-draft")}</text>
+          <text x="185" y="128" textAnchor="middle" className="fill-muted-foreground text-[9px]">{tc("transition.approved-draft")}</text>
+
+          {/* Arrow markers */}
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
+            </marker>
+            <marker id="arrow-sm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
+            </marker>
+          </defs>
+        </svg>
+
+        {/* Descriptions */}
+        <div className="border-t mt-3 pt-3 grid gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className={`${statusColors.draft} text-[10px] shrink-0`}>{tc("status.draft")}</Badge>
+            <span className="text-muted-foreground">Translation is being written or needs changes</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className={`${statusColors.in_review} text-[10px] shrink-0`}>{tc("status.in_review")}</Badge>
+            <span className="text-muted-foreground">Submitted and waiting for reviewer approval</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className={`${statusColors.approved} text-[10px] shrink-0`}>{tc("status.approved")}</Badge>
+            <span className="text-muted-foreground">Approved and ready for production use</span>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 const addKeyFormSchema = insertTranslationKeySchema.extend({
   projectId: z.string(),
 });
@@ -335,6 +466,7 @@ function FindReplaceDialog({
   onComplete: () => void;
 }) {
   const { toast } = useToast();
+  const { t: tc } = useTranslation("common");
   const [open, setOpen] = useState(false);
   const [findText, setFindText] = useState("");
   const [replaceText, setReplaceText] = useState("");
@@ -378,8 +510,8 @@ function FindReplaceDialog({
     } catch (error) {
       if (error instanceof Error && isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -388,7 +520,7 @@ function FindReplaceDialog({
         return;
       }
       toast({
-        title: "Error",
+        title: tc("toast.error"),
         description:
           error instanceof Error
             ? error.message
@@ -428,8 +560,8 @@ function FindReplaceDialog({
     } catch (error) {
       if (error instanceof Error && isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -438,7 +570,7 @@ function FindReplaceDialog({
         return;
       }
       toast({
-        title: "Error",
+        title: tc("toast.error"),
         description:
           error instanceof Error
             ? error.message
@@ -642,6 +774,8 @@ function FindReplaceDialog({
 export default function TranslationEditor() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { t } = useTranslation("editor");
+  const { t: tc } = useTranslation("common");
   const queryClient = useQueryClient();
   const [translationData, setTranslationData] = useState<TranslationData>({});
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -653,6 +787,29 @@ export default function TranslationEditor() {
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const [isAddKeyDialogOpen, setIsAddKeyDialogOpen] = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [isPreTranslateDialogOpen, setIsPreTranslateDialogOpen] = useState(false);
+  const [preTranslateLanguageId, setPreTranslateLanguageId] = useState<string>("");
+  const [isPreTranslating, setIsPreTranslating] = useState(false);
+  const [preTranslateProgress, setPreTranslateProgress] = useState<{ translated: number; skipped: number; errors: number } | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "folder">("folder");
+  const [selectedKeyId, setSelectedKeyId] = useState<string | undefined>();
+  const [selectedFolderPath, setSelectedFolderPath] = useState<string | undefined>();
+  const [visibleCount, setVisibleCount] = useState(500);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const main = document.querySelector("main");
+    if (!main) return;
+    const onScroll = () => setShowScrollTop(main.scrollTop > 300);
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => main.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const handleScrollToTop = useCallback(() => {
+    const main = document.querySelector("main");
+    main?.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   const addKeyForm = useForm<AddKeyFormData>({
     resolver: zodResolver(addKeyFormSchema),
@@ -661,12 +818,23 @@ export default function TranslationEditor() {
       key: "",
       description: "",
       maxLength: undefined,
+      priority: "normal",
     },
   });
 
   const { data: languages } = useQuery<ProjectLanguage[]>({
     queryKey: ["/api/projects", id, "languages"],
   });
+
+  // Sort languages: default language first, then the rest
+  const sortedLanguages = useMemo(() => {
+    if (!languages) return undefined;
+    return [...languages].sort((a, b) => {
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
+      return 0;
+    });
+  }, [languages]);
 
   const { data: keys, isLoading: keysLoading } = useQuery<TranslationKey[]>({
     queryKey: ["/api/projects", id, "keys"],
@@ -726,8 +894,8 @@ export default function TranslationEditor() {
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -736,8 +904,8 @@ export default function TranslationEditor() {
         return;
       }
       toast({
-        title: "Error",
-        description: error.message || "Failed to save translation",
+        title: tc("toast.error"),
+        description: error.message || t("toast.failedSave"),
         variant: "destructive",
       });
     },
@@ -755,8 +923,8 @@ export default function TranslationEditor() {
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -765,8 +933,8 @@ export default function TranslationEditor() {
         return;
       }
       toast({
-        title: "Error",
-        description: error.message || "Failed to get suggestion",
+        title: tc("toast.error"),
+        description: error.message || t("toast.failedSuggestion"),
         variant: "destructive",
       });
     },
@@ -783,15 +951,15 @@ export default function TranslationEditor() {
       addKeyForm.reset();
       setIsAddKeyDialogOpen(false);
       toast({
-        title: "Success",
-        description: "Translation key added successfully",
+        title: tc("toast.success"),
+        description: t("toast.keyAdded"),
       });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -800,8 +968,8 @@ export default function TranslationEditor() {
         return;
       }
       toast({
-        title: "Error",
-        description: error.message || "Failed to create translation key",
+        title: tc("toast.error"),
+        description: error.message || t("toast.failedCreateKey"),
         variant: "destructive",
       });
     },
@@ -842,8 +1010,54 @@ export default function TranslationEditor() {
         translationId: data?.id,
       });
       toast({
-        title: "Saved",
-        description: "Translation saved successfully",
+        title: t("toast.saved"),
+        description: t("toast.savedDesc"),
+      });
+    } finally {
+      setSavingStates((prev) => ({ ...prev, [saveKey]: false }));
+    }
+  };
+
+  const handleStatusChange = async (
+    keyId: string,
+    languageId: string,
+    newStatus: TranslationStatus
+  ) => {
+    const data = translationData[keyId]?.[languageId];
+    if (!data?.id) return;
+
+    const saveKey = `${keyId}-${languageId}`;
+    setSavingStates((prev) => ({ ...prev, [saveKey]: true }));
+
+    try {
+      await saveTranslation.mutateAsync({
+        keyId,
+        languageId,
+        value: data.value,
+        status: newStatus,
+        translationId: data.id,
+      });
+
+      setTranslationData((prev) => ({
+        ...prev,
+        [keyId]: {
+          ...prev[keyId],
+          [languageId]: {
+            ...prev[keyId]?.[languageId],
+            status: newStatus,
+          },
+        },
+      }));
+
+      toast({
+        title: t("toast.statusUpdated"),
+        description: t("toast.statusUpdatedDesc", { status: tc("status." + newStatus) }),
+      });
+    } catch (error: any) {
+      toast({
+        title: t("toast.invalidTransition"),
+        description: error?.message || t("toast.invalidTransitionDesc"),
+        variant: "destructive",
       });
     } finally {
       setSavingStates((prev) => ({ ...prev, [saveKey]: false }));
@@ -854,8 +1068,8 @@ export default function TranslationEditor() {
     const defaultLanguage = languages?.find((l) => l.isDefault);
     if (!defaultLanguage) {
       toast({
-        title: "Error",
-        description: "No default language set",
+        title: tc("toast.error"),
+        description: t("toast.noDefaultLanguage"),
         variant: "destructive",
       });
       return;
@@ -864,7 +1078,7 @@ export default function TranslationEditor() {
     const sourceText = translationData[keyId]?.[defaultLanguage.id]?.value;
     if (!sourceText) {
       toast({
-        title: "Source text required",
+        title: t("toast.sourceRequired"),
         description: `Please add a translation in ${defaultLanguage.languageName} first`,
         variant: "destructive",
       });
@@ -902,8 +1116,8 @@ export default function TranslationEditor() {
 
       if (!translationId) {
         toast({
-          title: "Error",
-          description: "Unable to create translation record",
+          title: tc("toast.error"),
+          description: t("toast.failedCreateRecord"),
           variant: "destructive",
         });
         return;
@@ -932,8 +1146,8 @@ export default function TranslationEditor() {
         }));
 
         toast({
-          title: "AI Suggestion Applied",
-          description: "Translation saved with status 'In Review'",
+          title: t("toast.aiApplied"),
+          description: t("toast.aiAppliedDesc"),
         });
       }
     } catch (error) {
@@ -946,8 +1160,8 @@ export default function TranslationEditor() {
     const defaultLanguage = languages?.find((l) => l.isDefault);
     if (!defaultLanguage) {
       toast({
-        title: "Error",
-        description: "No default language set",
+        title: tc("toast.error"),
+        description: t("toast.noDefaultLanguage"),
         variant: "destructive",
       });
       return;
@@ -956,8 +1170,8 @@ export default function TranslationEditor() {
     const nonDefaultLanguages = languages?.filter((l) => !l.isDefault) || [];
     if (nonDefaultLanguages.length === 0) {
       toast({
-        title: "No target languages",
-        description: "Add non-default languages to translate to",
+        title: t("toast.noTargetLanguages"),
+        description: t("toast.noTargetLanguagesDesc"),
         variant: "destructive",
       });
       return;
@@ -970,7 +1184,7 @@ export default function TranslationEditor() {
 
     if (keysWithSource.length === 0) {
       toast({
-        title: "No source text",
+        title: t("toast.noSourceText"),
         description: `All selected keys need translations in ${defaultLanguage.languageName} first`,
         variant: "destructive",
       });
@@ -1065,9 +1279,61 @@ export default function TranslationEditor() {
     });
 
     toast({
-      title: "Bulk Translation Complete",
+      title: t("toast.bulkComplete"),
       description: `${succeeded} translations generated${failed > 0 ? `, ${failed} failed` : ""}`,
     });
+  };
+
+  const handlePreTranslate = async () => {
+    if (!preTranslateLanguageId) {
+      toast({
+        title: "Error",
+        description: "Please select a target language",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsPreTranslating(true);
+    setPreTranslateProgress(null);
+
+    try {
+      const response = await apiRequest(
+        "POST",
+        `/api/projects/${id}/pre-translate`,
+        { languageId: preTranslateLanguageId },
+      );
+      const result = await response.json();
+      setPreTranslateProgress(result);
+
+      queryClient.invalidateQueries({
+        queryKey: ["/api/projects", id, "translations"],
+      });
+
+      toast({
+        title: "Pre-translation Complete",
+        description: `${result.translated} translated, ${result.skipped} skipped${result.errors > 0 ? `, ${result.errors} errors` : ""}`,
+      });
+    } catch (error: any) {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: tc("toast.error"),
+        description: error.message || "Failed to pre-translate",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPreTranslating(false);
+    }
   };
 
   const toggleKeySelection = (keyId: string) => {
@@ -1093,9 +1359,53 @@ export default function TranslationEditor() {
   const filteredKeys =
     keys?.filter(
       (key) =>
-        key.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        key.description?.toLowerCase().includes(searchQuery.toLowerCase()),
+        (key.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        key.description?.toLowerCase().includes(searchQuery.toLowerCase())) &&
+        (priorityFilter === "all" || key.priority === priorityFilter),
     ) || [];
+
+  // Reset visible count when filters change
+  useEffect(() => {
+    setVisibleCount(500);
+  }, [searchQuery, priorityFilter]);
+
+  // Build folder tree structure
+  const keyTree = useMemo(() => {
+    if (!keys) return [];
+    const tree = buildKeyTree(keys);
+    if (searchQuery.trim()) {
+      return filterTree(tree, searchQuery);
+    }
+    return tree;
+  }, [keys, searchQuery]);
+
+  // Get selected key for folder view
+  const selectedKey = useMemo(() => {
+    if (!selectedKeyId || !keys) return undefined;
+    return keys.find((k) => k.id === selectedKeyId);
+  }, [selectedKeyId, keys]);
+
+  // Get all keys in selected folder (recursively)
+  const folderKeys = useMemo(() => {
+    if (selectedFolderPath === undefined || !keyTree.length) return [];
+    return getKeysInFolder(keyTree, selectedFolderPath);
+  }, [selectedFolderPath, keyTree]);
+
+  // Handle folder or key selection
+  const handleNodeSelect = (
+    nodeId: string,
+    isFolder: boolean,
+    folderPath?: string
+  ) => {
+    setVisibleCount(500);
+    if (isFolder && folderPath !== undefined) {
+      setSelectedFolderPath(folderPath);
+      setSelectedKeyId(undefined);
+    } else {
+      setSelectedKeyId(nodeId);
+      setSelectedFolderPath(undefined);
+    }
+  };
 
   const totalKeys = keys?.length || 0;
   const translatedKeys =
@@ -1120,20 +1430,20 @@ export default function TranslationEditor() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Translation Editor</h1>
+            <h1 className="text-2xl font-semibold">{t("title")}</h1>
           </div>
           <Dialog open={isAddKeyDialogOpen} onOpenChange={setIsAddKeyDialogOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-add-key">
                 <Plus className="h-4 w-4 mr-2" />
-                Add Key
+                {tc("actions.addKey")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Translation Key</DialogTitle>
+                <DialogTitle>{t("addKeyTitle")}</DialogTitle>
                 <DialogDescription>
-                  Create a new translation key for your project
+                  {t("addKeyDesc")}
                 </DialogDescription>
               </DialogHeader>
               <Form {...addKeyForm}>
@@ -1143,10 +1453,10 @@ export default function TranslationEditor() {
                     name="key"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Key</FormLabel>
+                        <FormLabel>{tc("labels.key")}</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="e.g., home.welcome.title"
+                            placeholder={t("keyPlaceholder")}
                             {...field}
                             data-testid="input-key"
                           />
@@ -1160,10 +1470,10 @@ export default function TranslationEditor() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Description (optional)</FormLabel>
+                        <FormLabel>{t("descriptionOptional")}</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Context for translators..."
+                            placeholder={t("descriptionPlaceholder")}
                             {...field}
                             value={field.value || ""}
                             data-testid="input-description"
@@ -1197,6 +1507,32 @@ export default function TranslationEditor() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="priority"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Priority</FormLabel>
+                        <Select
+                          value={field.value || "normal"}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-priority">
+                              <SelectValue placeholder="Select priority" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="critical">Critical</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
@@ -1204,7 +1540,7 @@ export default function TranslationEditor() {
                       onClick={() => setIsAddKeyDialogOpen(false)}
                       data-testid="button-cancel"
                     >
-                      Cancel
+                      {tc("actions.cancel")}
                     </Button>
                     <Button
                       type="submit"
@@ -1214,7 +1550,7 @@ export default function TranslationEditor() {
                       {createKey.isPending && (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       )}
-                      Add Key
+                      {tc("actions.addKey")}
                     </Button>
                   </div>
                 </form>
@@ -1223,8 +1559,8 @@ export default function TranslationEditor() {
           </Dialog>
         </div>
         <div className="py-16 text-center">
-          <p className="text-muted-foreground">No translation keys available</p>
-          <p className="text-sm text-muted-foreground mt-2">Get started by adding your first translation key</p>
+          <p className="text-muted-foreground">{t("noKeys")}</p>
+          <p className="text-sm text-muted-foreground mt-2">{t("noKeysDesc")}</p>
         </div>
       </div>
     );
@@ -1232,24 +1568,55 @@ export default function TranslationEditor() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Translation Editor</h1>
-          <p className="text-sm text-muted-foreground">
-            {totalKeys} keys · {translatedKeys} fully translated
-          </p>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">{t("title")}</h1>
+            <p className="text-sm text-muted-foreground">
+              {t("subtitle", { totalKeys, translatedKeys })}
+            </p>
+          </div>
+          <WorkflowVisual />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search keys..."
+              placeholder={t("searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 w-64"
               data-testid="input-search"
             />
           </div>
+          <Tabs
+            value={viewMode}
+            onValueChange={(v) => setViewMode(v as "table" | "folder")}
+          >
+            <TabsList>
+              <TabsTrigger value="folder" data-testid="tab-folder-view">
+                <FolderTree className="h-4 w-4 mr-2" />
+                {t("folderView")}
+              </TabsTrigger>
+              <TabsTrigger value="table" data-testid="tab-table-view">
+                <List className="h-4 w-4 mr-2" />
+                {t("tableView")}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-44" data-testid="select-priority-filter">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="All priorities" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All priorities</SelectItem>
+              <SelectItem value="critical">Critical</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
           <FindReplaceDialog
             projectId={id!}
             languages={languages}
@@ -1263,14 +1630,14 @@ export default function TranslationEditor() {
             <DialogTrigger asChild>
               <Button data-testid="button-add-key">
                 <Plus className="h-4 w-4 mr-2" />
-                Add Key
+                {tc("actions.addKey")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Translation Key</DialogTitle>
+                <DialogTitle>{t("addKeyTitle")}</DialogTitle>
                 <DialogDescription>
-                  Create a new translation key for your project
+                  {t("addKeyDesc")}
                 </DialogDescription>
               </DialogHeader>
               <Form {...addKeyForm}>
@@ -1280,10 +1647,10 @@ export default function TranslationEditor() {
                     name="key"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Key</FormLabel>
+                        <FormLabel>{tc("labels.key")}</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="e.g., home.welcome.title"
+                            placeholder={t("keyPlaceholder")}
                             {...field}
                             data-testid="input-key"
                           />
@@ -1297,10 +1664,10 @@ export default function TranslationEditor() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Description (optional)</FormLabel>
+                        <FormLabel>{t("descriptionOptional")}</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="Context for translators..."
+                            placeholder={t("descriptionPlaceholder")}
                             {...field}
                             value={field.value || ""}
                             data-testid="input-description"
@@ -1334,6 +1701,32 @@ export default function TranslationEditor() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={addKeyForm.control}
+                    name="priority"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Priority</FormLabel>
+                        <Select
+                          value={field.value || "normal"}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-priority">
+                              <SelectValue placeholder="Select priority" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="critical">Critical</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
@@ -1341,7 +1734,7 @@ export default function TranslationEditor() {
                       onClick={() => setIsAddKeyDialogOpen(false)}
                       data-testid="button-cancel"
                     >
-                      Cancel
+                      {tc("actions.cancel")}
                     </Button>
                     <Button
                       type="submit"
@@ -1351,17 +1744,113 @@ export default function TranslationEditor() {
                       {createKey.isPending && (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       )}
-                      Add Key
+                      {tc("actions.addKey")}
                     </Button>
                   </div>
                 </form>
               </Form>
             </DialogContent>
           </Dialog>
+          <Dialog
+            open={isPreTranslateDialogOpen}
+            onOpenChange={(open) => {
+              setIsPreTranslateDialogOpen(open);
+              if (!open) {
+                setPreTranslateLanguageId("");
+                setPreTranslateProgress(null);
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-pre-translate">
+                <Languages className="h-4 w-4 mr-2" />
+                Pre-translate
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Pre-translate</DialogTitle>
+                <DialogDescription>
+                  Automatically translate all empty translations for a selected language using AI. Translations will be saved as drafts for review.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Target Language</label>
+                  <Select
+                    value={preTranslateLanguageId}
+                    onValueChange={setPreTranslateLanguageId}
+                    disabled={isPreTranslating}
+                  >
+                    <SelectTrigger data-testid="select-pre-translate-language">
+                      <SelectValue placeholder="Select a language..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {languages
+                        ?.filter((l) => !l.isDefault)
+                        .map((lang) => (
+                          <SelectItem key={lang.id} value={lang.id}>
+                            <span className="font-mono mr-2">{lang.languageCode}</span>
+                            {lang.languageName}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {isPreTranslating && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Translating... This may take a while.</span>
+                    </div>
+                    <Progress value={undefined} className="h-2" />
+                  </div>
+                )}
+                {preTranslateProgress && !isPreTranslating && (
+                  <div className="space-y-1 text-sm">
+                    <p className="text-chart-2">{preTranslateProgress.translated} translations created</p>
+                    <p className="text-muted-foreground">{preTranslateProgress.skipped} skipped (already translated or no source)</p>
+                    {preTranslateProgress.errors > 0 && (
+                      <p className="text-destructive">{preTranslateProgress.errors} errors</p>
+                    )}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  onClick={() => setIsPreTranslateDialogOpen(false)}
+                  disabled={isPreTranslating}
+                  data-testid="button-pre-translate-cancel"
+                >
+                  {preTranslateProgress ? "Close" : "Cancel"}
+                </Button>
+                {!preTranslateProgress && (
+                  <Button
+                    onClick={handlePreTranslate}
+                    disabled={isPreTranslating || !preTranslateLanguageId}
+                    data-testid="button-pre-translate-start"
+                  >
+                    {isPreTranslating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Translating...
+                      </>
+                    ) : (
+                      <>
+                        <Languages className="h-4 w-4 mr-2" />
+                        Start Pre-translation
+                      </>
+                    )}
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
-      {selectedKeys.size > 0 && (
+      {selectedKeys.size > 0 && viewMode === "table" && (
         <div className="flex items-center justify-between p-3 bg-accent/50 border rounded-lg">
           <div className="flex items-center gap-3">
             <Button
@@ -1400,75 +1889,52 @@ export default function TranslationEditor() {
         </div>
       )}
 
-      <div className="border rounded-lg overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>
-                <Checkbox
-                  checked={
-                    selectedKeys.size === filteredKeys.length &&
-                    filteredKeys.length > 0
-                  }
-                  onCheckedChange={toggleAllKeys}
-                  data-testid="checkbox-select-all"
-                />
-              </TableHead>
-              <TableHead className="min-w-48">Key</TableHead>
-              <TableHead className="min-w-48">Translations</TableHead>
-              {/* {languages?.map((lang) => (
-                <TableHead key={lang.id} className="min-w-64">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono">{lang.languageCode}</span>
-                    <span className="text-muted-foreground font-normal">
-                      {lang.languageName}
-                    </span>
-                    {lang.isDefault && (
-                      <Badge variant="outline" className="text-xs">
-                        Default
-                      </Badge>
-                    )}
-                  </div>
-                </TableHead>
-              ))} */}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredKeys.map((key) => (
-              <TableRow key={key.id} data-testid={`row-key-${key.id}`}>
-                <TableCell className="align-top">
-                  <Checkbox
-                    checked={selectedKeys.has(key.id)}
-                    onCheckedChange={() => toggleKeySelection(key.id)}
-                    data-testid={`checkbox-key-${key.id}`}
-                  />
-                </TableCell>
-                <TableCell className="align-top max-w-60 text-wrap break-all">
-                  <div>
-                    <div className="font-mono text-xs">{key.key}</div>
-                    {key.description && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {key.description}
-                      </div>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Table>
-                    <TableBody>
-                      {languages?.map((lang) => {
-                        // Get source text from default language
-                        const defaultLang = languages.find(l => l.isDefault);
-                        const sourceText = defaultLang
-                          ? translationData[key.id]?.[defaultLang.id]?.value
-                          : undefined;
-                        
-                        return (
-                          <TableRow key={lang.id}>
-                            <TableCell className="font-mono text-xs text-muted-foreground w-20">
-                              {lang.languageCode}
-                            </TableCell>
-                            <TableCell className="align-top">
+      {viewMode === "folder" ? (
+        <div className="grid grid-cols-[300px_1fr] gap-4">
+          <div className="border rounded-lg overflow-auto max-h-[calc(100vh-300px)]">
+            <KeyFolderView
+              nodes={keyTree}
+              selectedKeyId={selectedKeyId}
+              selectedFolderPath={selectedFolderPath}
+              onKeySelect={(keyId) => handleNodeSelect(keyId, false)}
+              onFolderSelect={(folderPath) => handleNodeSelect("", true, folderPath)}
+              searchQuery={searchQuery}
+            />
+          </div>
+          <div className="border rounded-lg overflow-auto">
+            {selectedFolderPath !== undefined && folderKeys.length > 0 ? (
+              /* Folder content: show all keys in folder */
+              <div className="p-4 space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {selectedFolderPath ? `Folder: ${selectedFolderPath}` : t("allKeys")}
+                  </h3>
+                </div>
+                <div className="space-y-6">
+                  {folderKeys.slice(0, visibleCount).map((key) => {
+                    const defaultLang = languages?.find((l) => l.isDefault);
+                    const sourceText = defaultLang ? translationData[key.id]?.[defaultLang.id]?.value : undefined;
+                    return (
+                      <div key={key.id} className="border rounded-lg p-4 space-y-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-base font-semibold font-mono">{key.key}</h4>
+                            <PriorityBadge priority={key.priority} />
+                          </div>
+                          {key.description && (
+                            <p className="text-sm text-muted-foreground mt-1">{key.description}</p>
+                          )}
+                        </div>
+                        <div className="space-y-3">
+                          {sortedLanguages?.map((lang) => (
+                            <div key={lang.id} className="border-b pb-3 last:border-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="font-mono text-sm font-medium">{lang.languageCode}</span>
+                                <span className="text-sm text-muted-foreground">{lang.languageName}</span>
+                                {lang.isDefault && (
+                                  <Badge variant="outline" className="text-xs">{tc("labels.default")}</Badge>
+                                )}
+                              </div>
                               <TranslationCell
                                 keyId={key.id}
                                 translationKey={key}
@@ -1478,43 +1944,227 @@ export default function TranslationEditor() {
                                 onUpdate={updateTranslation}
                                 onSave={handleSave}
                                 onAISuggest={handleAISuggest}
+                                onStatusChange={handleStatusChange}
                                 isDefault={!!lang.isDefault}
-                                isSaving={
-                                  savingStates[`${key.id}-${lang.id}`] || false
-                                }
-                                isSuggesting={
-                                  suggestingStates[`${key.id}-${lang.id}`] ||
-                                  false
-                                }
+                                isSaving={savingStates[`${key.id}-${lang.id}`] || false}
+                                isSuggesting={suggestingStates[`${key.id}-${lang.id}`] || false}
                               />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableCell>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {folderKeys.length > visibleCount && (
+                  <div className="p-4 text-center">
+                    <Button
+                      variant="outline"
+                      onClick={() => setVisibleCount((prev) => prev + 500)}
+                      data-testid="button-load-more"
+                    >
+                      Load More ({folderKeys.length - visibleCount} remaining)
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : selectedKey ? (
+              /* Single key selected */
+              <div className="p-4 space-y-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold font-mono">{selectedKey.key}</h3>
+                    <PriorityBadge priority={selectedKey.priority} />
+                  </div>
+                  {selectedKey.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{selectedKey.description}</p>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  {sortedLanguages?.map((lang) => {
+                    const defaultLang = languages.find((l) => l.isDefault);
+                    const sourceText = defaultLang ? translationData[selectedKey.id]?.[defaultLang.id]?.value : undefined;
+                    return (
+                      <div key={lang.id} className="border-b pb-4 last:border-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-mono text-xs font-medium">{lang.languageCode}</span>
+                          <span className="text-xs text-muted-foreground">{lang.languageName}</span>
+                          {lang.isDefault && (
+                            <Badge variant="outline" className="text-xs">{tc("labels.default")}</Badge>
+                          )}
+                        </div>
+                        <TranslationCell
+                          keyId={selectedKey.id}
+                          translationKey={selectedKey}
+                          language={lang}
+                          translationData={translationData}
+                          sourceText={sourceText}
+                          onUpdate={updateTranslation}
+                          onSave={handleSave}
+                          onAISuggest={handleAISuggest}
+                          onStatusChange={handleStatusChange}
+                          isDefault={!!lang.isDefault}
+                          isSaving={savingStates[`${selectedKey.id}-${lang.id}`] || false}
+                          isSuggesting={suggestingStates[`${selectedKey.id}-${lang.id}`] || false}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="p-16 text-center">
+                <FolderTree className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  Select a key from the folder tree to edit translations
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="border rounded-lg overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
+                  <Checkbox
+                    checked={
+                      selectedKeys.size === filteredKeys.length &&
+                      filteredKeys.length > 0
+                    }
+                    onCheckedChange={toggleAllKeys}
+                    data-testid="checkbox-select-all"
+                  />
+                </TableHead>
+                <TableHead className="min-w-48">Key</TableHead>
+                <TableHead className="min-w-48">Translations</TableHead>
                 {/* {languages?.map((lang) => (
-                  <TableCell key={lang.id} className="align-top">
-                    <TranslationCell
-                      keyId={key.id}
-                      translationKey={key}
-                      language={lang}
-                      translationData={translationData}
-                      onUpdate={updateTranslation}
-                      onSave={handleSave}
-                      onAISuggest={handleAISuggest}
-                      isDefault={!!lang.isDefault}
-                      isSaving={savingStates[`${key.id}-${lang.id}`] || false}
-                      isSuggesting={suggestingStates[`${key.id}-${lang.id}`] || false}
-                    />
-                  </TableCell>
+                  <TableHead key={lang.id} className="min-w-64">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono">{lang.languageCode}</span>
+                      <span className="text-muted-foreground font-normal">
+                        {lang.languageName}
+                      </span>
+                      {lang.isDefault && (
+                        <Badge variant="outline" className="text-xs">
+                          Default
+                        </Badge>
+                      )}
+                    </div>
+                  </TableHead>
                 ))} */}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {filteredKeys.slice(0, visibleCount).map((key) => (
+                <TableRow key={key.id} data-testid={`row-key-${key.id}`}>
+                  <TableCell className="align-top">
+                    <Checkbox
+                      checked={selectedKeys.has(key.id)}
+                      onCheckedChange={() => toggleKeySelection(key.id)}
+                      data-testid={`checkbox-key-${key.id}`}
+                    />
+                  </TableCell>
+                  <TableCell className="align-top max-w-60 text-wrap break-all">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs">{key.key}</span>
+                        <PriorityBadge priority={key.priority} />
+                      </div>
+                      {key.description && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {key.description}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Table>
+                      <TableBody>
+                        {sortedLanguages?.map((lang) => {
+                          // Get source text from default language
+                          const defaultLang = languages.find(l => l.isDefault);
+                          const sourceText = defaultLang
+                            ? translationData[key.id]?.[defaultLang.id]?.value
+                            : undefined;
+
+                          return (
+                            <TableRow key={lang.id}>
+                              <TableCell className="font-mono text-xs text-muted-foreground w-20">
+                                {lang.languageCode}
+                              </TableCell>
+                              <TableCell className="align-top">
+                                <TranslationCell
+                                  keyId={key.id}
+                                  translationKey={key}
+                                  language={lang}
+                                  translationData={translationData}
+                                  sourceText={sourceText}
+                                  onUpdate={updateTranslation}
+                                  onSave={handleSave}
+                                  onAISuggest={handleAISuggest}
+                                  onStatusChange={handleStatusChange}
+                                  isDefault={!!lang.isDefault}
+                                  isSaving={
+                                    savingStates[`${key.id}-${lang.id}`] || false
+                                  }
+                                  isSuggesting={
+                                    suggestingStates[`${key.id}-${lang.id}`] ||
+                                    false
+                                  }
+                                />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableCell>
+                  {/* {languages?.map((lang) => (
+                    <TableCell key={lang.id} className="align-top">
+                      <TranslationCell
+                        keyId={key.id}
+                        translationKey={key}
+                        language={lang}
+                        translationData={translationData}
+                        onUpdate={updateTranslation}
+                        onSave={handleSave}
+                        onAISuggest={handleAISuggest}
+                        onStatusChange={handleStatusChange}
+                        isDefault={!!lang.isDefault}
+                        isSaving={savingStates[`${key.id}-${lang.id}`] || false}
+                        isSuggesting={suggestingStates[`${key.id}-${lang.id}`] || false}
+                      />
+                    </TableCell>
+                  ))} */}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {filteredKeys.length > visibleCount && (
+            <div className="p-4 text-center border-t">
+              <Button
+                variant="outline"
+                onClick={() => setVisibleCount((prev) => prev + 500)}
+                data-testid="button-load-more"
+              >
+                Load More ({filteredKeys.length - visibleCount} remaining)
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showScrollTop && (
+        <button
+          className="fixed bottom-6 right-6 z-50 h-10 w-10 rounded-full shadow-lg border bg-background hover:bg-accent flex items-center justify-center transition-colors"
+          onClick={handleScrollToTop}
+          data-testid="button-scroll-top"
+        >
+          <ArrowUp className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

@@ -1,9 +1,22 @@
 import { useState } from "react";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, FileJson, FileSpreadsheet, AlertCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  Upload,
+  FileJson,
+  FileSpreadsheet,
+  AlertCircle,
+  ArrowLeft,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -16,22 +29,28 @@ export default function ImportTranslations() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { t } = useTranslation("project");
+  const { t: tc } = useTranslation("common");
   const [format, setFormat] = useState<"json" | "csv">("json");
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
   const importMutation = useMutation({
     mutationFn: async ({ format, data }: { format: string; data: any }) => {
-      return await apiRequest("POST", `/api/projects/${id}/import`, { format, data });
+      return await apiRequest("POST", `/api/projects/${id}/import`, {
+        format,
+        data,
+      });
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
-      const message = data.draftsCreated > 0 
-        ? `Imported ${data.imported || 0} translation(s) and auto-created ${data.draftsCreated} draft(s) for other languages`
-        : `Imported ${data.imported || 0} translation(s)`;
-      
+      const message =
+        data.draftsCreated > 0
+          ? t("import.importedWithDrafts", { count: data.imported || 0, drafts: data.draftsCreated })
+          : t("import.importedCount", { count: data.imported || 0 });
+
       toast({
-        title: "Success",
+        title: tc("toast.success"),
         description: message,
       });
       setLocation(`/projects/${id}`);
@@ -39,8 +58,8 @@ export default function ImportTranslations() {
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -49,8 +68,8 @@ export default function ImportTranslations() {
         return;
       }
       toast({
-        title: "Error",
-        description: error.message || "Failed to import translations",
+        title: tc("toast.error"),
+        description: error.message || t("import.failedImport"),
         variant: "destructive",
       });
     },
@@ -85,8 +104,8 @@ export default function ImportTranslations() {
   const handleImport = async () => {
     if (!file) {
       toast({
-        title: "Error",
-        description: "Please select a file to import",
+        title: tc("toast.error"),
+        description: t("import.selectFile"),
         variant: "destructive",
       });
       return;
@@ -97,7 +116,7 @@ export default function ImportTranslations() {
       try {
         const content = e.target?.result as string;
         let data;
-        
+
         if (format === "json") {
           data = JSON.parse(content);
         } else {
@@ -107,8 +126,8 @@ export default function ImportTranslations() {
         importMutation.mutate({ format, data });
       } catch (error) {
         toast({
-          title: "Error",
-          description: "Failed to read file content",
+          title: tc("toast.error"),
+          description: t("import.failedRead"),
           variant: "destructive",
         });
       }
@@ -119,31 +138,58 @@ export default function ImportTranslations() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold mb-2">Import Translations</h1>
+        <Link href={`/projects/${id}`}>
+          <Button variant="ghost" size="sm" className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {tc("actions.backToProject")}
+          </Button>
+        </Link>
+      </div>
+      <div>
+        <h1 className="text-3xl font-semibold mb-2">{t("import.title")}</h1>
         <p className="text-muted-foreground">
-          Upload your translation files in JSON or CSV format
+          {t("import.subtitle")}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Format</CardTitle>
-          <CardDescription>Choose the format of your import file</CardDescription>
+          <CardTitle>{t("import.selectFormat")}</CardTitle>
+          <CardDescription>
+            {t("import.selectFormatDesc")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <RadioGroup value={format} onValueChange={(v) => setFormat(v as "json" | "csv")}>
+          <RadioGroup
+            value={format}
+            onValueChange={(v) => setFormat(v as "json" | "csv")}
+          >
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="json" id="json" data-testid="radio-format-json" />
-              <Label htmlFor="json" className="flex items-center gap-2 cursor-pointer">
+              <RadioGroupItem
+                value="json"
+                id="json"
+                data-testid="radio-format-json"
+              />
+              <Label
+                htmlFor="json"
+                className="flex items-center gap-2 cursor-pointer"
+              >
                 <FileJson className="h-4 w-4" />
-                JSON
+                {t("import.json")}
               </Label>
             </div>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="csv" id="csv" data-testid="radio-format-csv" />
-              <Label htmlFor="csv" className="flex items-center gap-2 cursor-pointer">
+              <RadioGroupItem
+                value="csv"
+                id="csv"
+                data-testid="radio-format-csv"
+              />
+              <Label
+                htmlFor="csv"
+                className="flex items-center gap-2 cursor-pointer"
+              >
                 <FileSpreadsheet className="h-4 w-4" />
-                CSV
+                {t("import.csv")}
               </Label>
             </div>
           </RadioGroup>
@@ -152,8 +198,10 @@ export default function ImportTranslations() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Upload File</CardTitle>
-          <CardDescription>Drag and drop or click to select a file</CardDescription>
+          <CardTitle>{t("import.uploadFile")}</CardTitle>
+          <CardDescription>
+            {t("import.uploadFileDesc")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div
@@ -186,9 +234,11 @@ export default function ImportTranslations() {
               ) : (
                 <div>
                   <p className="text-sm font-medium mb-1">
-                    Drop your {format.toUpperCase()} file here
+                    {t("import.dropHere", { format: format.toUpperCase() })}
                   </p>
-                  <p className="text-xs text-muted-foreground">or click to browse</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("import.orBrowse")}
+                  </p>
                 </div>
               )}
             </label>
@@ -200,25 +250,25 @@ export default function ImportTranslations() {
               <AlertDescription>
                 <div className="space-y-3">
                   <div>
-                    <strong>Flat Format:</strong> Simple key-value pairs use the project's default language.
+                    <strong>{t("import.flatFormat")}</strong> {t("import.flatFormatDesc")}
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
                       {`{ "home.title": "Welcome", "home.subtitle": "Get Started" }`}
                     </code>
                   </div>
                   <div>
-                    <strong>Namespace Format:</strong> Nested namespaces auto-flatten to dot-notation keys (common.settings).
+                    <strong>{t("import.namespaceFormat")}</strong> {t("import.namespaceFormatDesc")}
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
                       {`{ "common": { "settings": "Settings", "theme": "Theme" } }`}
                     </code>
                   </div>
                   <div>
-                    <strong>Language Format (single):</strong> Wrap in language code. Auto-creates drafts for other languages.
+                    <strong>{t("import.languageSingle")}</strong> {t("import.languageSingleDesc")}
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
                       {`{ "en": { "home.title": "Welcome" } }`}
                     </code>
                   </div>
                   <div>
-                    <strong>Language Format (multi):</strong> Import multiple languages at once.
+                    <strong>{t("import.languageMulti")}</strong> {t("import.languageMultiDesc")}
                     <code className="text-xs block mt-1 p-2 bg-muted rounded">
                       {`{ "en": { "home.title": "Welcome" }, "fr": { "home.title": "Bienvenue" } }`}
                     </code>
@@ -232,8 +282,8 @@ export default function ImportTranslations() {
             <Alert className="mt-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>CSV Format:</strong> Use columns: key, language_code, value, status.
-                Example header: <code className="text-xs">key,language_code,value,status</code>
+                <strong>{t("import.csvFormat")}</strong> {t("import.csvFormatDesc")}{" "}
+                <code className="text-xs">key,language_code,value,status</code>
               </AlertDescription>
             </Alert>
           )}
@@ -246,14 +296,14 @@ export default function ImportTranslations() {
           disabled={!file || importMutation.isPending}
           data-testid="button-import"
         >
-          {importMutation.isPending ? "Importing..." : "Import Translations"}
+          {importMutation.isPending ? tc("actions.importing") : t("import.title")}
         </Button>
         <Button
           variant="outline"
           onClick={() => setLocation(`/projects/${id}`)}
           data-testid="button-cancel"
         >
-          Cancel
+          {tc("actions.cancel")}
         </Button>
       </div>
     </div>

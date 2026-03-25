@@ -1,0 +1,19 @@
+{
+  "signIn": "Se connecter",
+  "hero.title1": "Gestion de la localisation",
+  "hero.title2": "simplifiée",
+  "hero.subtitle": "Gérez les traductions de plusieurs projets et langues avec des flux de travail collaboratifs, le contrôle de version et des capacités d'importation/exportation transparentes.",
+  "hero.cta": "Commencer gratuitement",
+  "features.multiProject": "Support multi-projets",
+  "features.multiProjectDesc": "Organisez et gérez les traductions de plusieurs projets depuis un seul tableau de bord.",
+  "features.collaborative": "Flux de travail collaboratif",
+  "features.collaborativeDesc": "Travaillez en équipe avec les développeurs, traducteurs et réviseurs grâce aux permissions basées sur les rôles.",
+  "features.importExport": "Importation et exportation",
+  "features.importExportDesc": "Importez et exportez vos traductions facilement aux formats JSON et CSV.",
+  "features.aiTranslation": "Traduction IA",
+  "features.aiTranslationDesc": "Obtenez des suggestions de traduction instantanées propulsées par l'API Google Translate.",
+  "features.versionControl": "Contrôle de version",
+  "features.versionControlDesc": "Suivez l'historique et le statut des traductions avec les états brouillon, révision et approuvé.",
+  "features.multiLanguage": "Multilingue",
+  "features.multiLanguageDesc": "Prise en charge de toutes les langues, y compris les variantes régionales comme le français canadien."
+}

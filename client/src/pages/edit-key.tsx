@@ -2,28 +2,38 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { insertTranslationKeySchema, type TranslationKey } from "@shared/schema";
 import { z } from "zod";
 
-const editKeySchema = insertTranslationKeySchema.extend({
-  key: z.string().min(1, "Key is required"),
-});
-
-type EditKeyForm = z.infer<typeof editKeySchema>;
-
 export default function EditKey() {
   const { id: projectId, keyId } = useParams<{ id: string; keyId: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { t } = useTranslation("project");
+  const { t: tc } = useTranslation("common");
+
+  const editKeySchema = insertTranslationKeySchema.extend({
+    key: z.string().min(1, tc("validation.keyRequired")),
+  });
+
+  type EditKeyForm = z.infer<typeof editKeySchema>;
 
   const { data: translationKey, isLoading } = useQuery<TranslationKey>({
     queryKey: ["/api/translation-keys", keyId],
@@ -36,6 +46,7 @@ export default function EditKey() {
       key: translationKey.key,
       description: translationKey.description || "",
       maxLength: translationKey.maxLength ?? undefined,
+      priority: translationKey.priority || "normal",
     } : undefined,
   });
 
@@ -174,6 +185,36 @@ export default function EditKey() {
                     </FormControl>
                     <FormDescription>
                       Maximum character count for translations of this key
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priority</FormLabel>
+                    <Select
+                      value={field.value || "normal"}
+                      onValueChange={field.onChange}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-priority">
+                          <SelectValue placeholder="Select priority" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="critical">Critical</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="low">Low</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Set the translation priority for this key
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

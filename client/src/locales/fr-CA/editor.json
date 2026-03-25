@@ -77,5 +77,11 @@
   "toast.noSourceText": "Aucun texte source",
   "toast.bulkComplete": "Traduction en lot terminée",
   "toast.keyDeleted": "Clé de traduction supprimée avec succès",
-  "toast.keysDeleted": "{{count}} clé(s) supprimée(s) avec succès"
+  "toast.keysDeleted": "{{count}} clé(s) supprimée(s) avec succès",
+
+  "priorityFilter": "Filtrer par priorité",
+  "allPriorities": "Toutes les priorités",
+  "priorityLabel": "Priorité",
+  "addKeyDialogTitle": "Ajouter une clé de traduction",
+  "addKeyDialogDescription": "Créer une nouvelle clé de traduction pour votre projet"
 }
