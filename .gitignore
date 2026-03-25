@@ -5,6 +5,7 @@ server/public
 vite.config.ts.*
 *.tar.gz
 .local-storage
+data/
 .env
 .claude/worktrees/
 .claude/settings.local.json
