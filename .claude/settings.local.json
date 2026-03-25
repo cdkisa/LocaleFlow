@@ -39,7 +39,10 @@
       "WebFetch(domain:docs.crowdin.com)",
       "WebFetch(domain:docs.lokalise.com)",
       "WebFetch(domain:docs.weblate.org)",
-      "WebFetch(domain:en.wikipedia.org)"
+      "WebFetch(domain:en.wikipedia.org)",
+      "Bash(git checkout:*)",
+      "Bash(echo \"exists in HEAD: $?\")",
+      "Bash(git branch:*)"
     ]
   }
 }
