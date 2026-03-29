@@ -1,7 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Languages, Globe2, Users, FileText, Zap, Shield } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export default function Landing() {
+  const { t } = useTranslation("landing");
+  const { t: tc } = useTranslation("common");
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -12,10 +16,10 @@ export default function Landing() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Languages className="h-6 w-6 text-primary" />
-                <span className="text-xl font-semibold">LocaleFlow</span>
+                <span className="text-xl font-semibold">{tc("brand")}</span>
               </div>
               <Button asChild data-testid="button-login">
-                <a href="/api/login">Sign In</a>
+                <a href="/api/login">{t("signIn")}</a>
               </Button>
             </div>
           </header>
@@ -23,16 +27,15 @@ export default function Landing() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
             <div className="text-center max-w-4xl mx-auto">
               <h1 className="text-5xl font-bold tracking-tight mb-6">
-                Localization Management
-                <span className="block text-primary mt-2">Made Simple</span>
+                {t("hero.title1")}
+                <span className="block text-primary mt-2">{t("hero.title2")}</span>
               </h1>
               <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-                Manage translations across multiple projects and languages with collaborative workflows, 
-                version control, and seamless import/export capabilities.
+                {t("hero.subtitle")}
               </p>
               <Button size="lg" asChild data-testid="button-get-started">
                 <a href="/api/login" className="text-base px-8">
-                  Get Started Free
+                  {t("hero.cta")}
                 </a>
               </Button>
             </div>
@@ -43,9 +46,9 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Globe2 className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Multi-Project Support</h3>
+                <h3 className="text-lg font-semibold mb-2">{t("features.multiProject")}</h3>
                 <p className="text-muted-foreground text-sm">
-                  Organize and manage translations for multiple projects from a single dashboard.
+                  {t("features.multiProjectDesc")}
                 </p>
               </div>
 
@@ -53,9 +56,9 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Users className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Collaborative Workflow</h3>
+                <h3 className="text-lg font-semibold mb-2">{t("features.collaborative")}</h3>
                 <p className="text-muted-foreground text-sm">
-                  Work together with developers, translators, and reviewers with role-based permissions.
+                  {t("features.collaborativeDesc")}
                 </p>
               </div>
 
@@ -63,9 +66,9 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <FileText className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Import & Export</h3>
+                <h3 className="text-lg font-semibold mb-2">{t("features.importExport")}</h3>
                 <p className="text-muted-foreground text-sm">
-                  Seamlessly import and export translations in JSON and CSV formats.
+                  {t("features.importExportDesc")}
                 </p>
               </div>
 
@@ -73,9 +76,9 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Zap className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">AI Translation</h3>
+                <h3 className="text-lg font-semibold mb-2">{t("features.aiTranslation")}</h3>
                 <p className="text-muted-foreground text-sm">
-                  Get instant translation suggestions powered by Google Translate API.
+                  {t("features.aiTranslationDesc")}
                 </p>
               </div>
 
@@ -83,9 +86,9 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Shield className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Version Control</h3>
+                <h3 className="text-lg font-semibold mb-2">{t("features.versionControl")}</h3>
                 <p className="text-muted-foreground text-sm">
-                  Track translation history and status with draft, review, and approved states.
+                  {t("features.versionControlDesc")}
                 </p>
               </div>
 
@@ -93,9 +96,9 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                   <Languages className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Multi-Language</h3>
+                <h3 className="text-lg font-semibold mb-2">{t("features.multiLanguage")}</h3>
                 <p className="text-muted-foreground text-sm">
-                  Support for any language including regional variants like French Canadian.
+                  {t("features.multiLanguageDesc")}
                 </p>
               </div>
             </div>

@@ -102,6 +102,7 @@ export const translationKeys = pgTable("translation_keys", {
   key: varchar("key", { length: 500 }).notNull(), // e.g., "home.welcome.title"
   description: text("description"), // optional context for translators
   maxLength: integer("max_length"), // optional character limit for translations
+  priority: varchar("priority", { length: 20 }).notNull().default("normal"), // critical, high, normal, low
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -163,6 +164,40 @@ export const insertTranslationSchema = createInsertSchema(translations).omit({
 
 export type InsertTranslation = z.infer<typeof insertTranslationSchema>;
 export type Translation = typeof translations.$inferSelect;
+
+// Translation status state machine
+export const TRANSLATION_STATUSES = ["draft", "in_review", "approved"] as const;
+export type TranslationStatus = (typeof TRANSLATION_STATUSES)[number];
+
+export const STATUS_LABELS: Record<TranslationStatus, string> = {
+  draft: "Draft",
+  in_review: "In Review",
+  approved: "Approved",
+};
+
+export const VALID_TRANSITIONS: Record<TranslationStatus, TranslationStatus[]> = {
+  draft: ["in_review"],
+  in_review: ["approved", "draft"],
+  approved: ["draft"],
+};
+
+export const TRANSITION_LABELS: Record<string, string> = {
+  "draft->in_review": "Submit for Review",
+  "in_review->approved": "Approve",
+  "in_review->draft": "Needs Work",
+  "approved->draft": "Reopen",
+};
+
+export function isValidTransition(from: string, to: string): boolean {
+  if (from === to) return true; // no-op: same status is always valid
+  const validTargets = VALID_TRANSITIONS[from as TranslationStatus];
+  if (!validTargets) return false;
+  return validTargets.includes(to as TranslationStatus);
+}
+
+export function getNextStatuses(current: string): TranslationStatus[] {
+  return VALID_TRANSITIONS[current as TranslationStatus] || [];
+}
 
 // Project members - who has access to a project and their role
 export const projectMembers = pgTable("project_members", {
@@ -250,6 +285,89 @@ export const insertTranslationMemorySchema = createInsertSchema(translationMemor
 
 export type InsertTranslationMemory = z.infer<typeof insertTranslationMemorySchema>;
 export type TranslationMemory = typeof translationMemory.$inferSelect;
+
+// Project Hyperlinks - external links related to a project
+export const projectHyperlinks = pgTable("project_hyperlinks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  label: varchar("label", { length: 255 }).notNull(),
+  url: text("url").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const projectHyperlinksRelations = relations(projectHyperlinks, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectHyperlinks.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertProjectHyperlinkSchema = createInsertSchema(projectHyperlinks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertProjectHyperlink = z.infer<typeof insertProjectHyperlinkSchema>;
+export type ProjectHyperlink = typeof projectHyperlinks.$inferSelect;
+
+// Translation Key Hyperlinks - external links related to a translation key
+export const translationKeyHyperlinks = pgTable("translation_key_hyperlinks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  translationKeyId: varchar("translation_key_id").notNull().references(() => translationKeys.id, { onDelete: "cascade" }),
+  label: varchar("label", { length: 255 }).notNull(),
+  url: text("url").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const translationKeyHyperlinksRelations = relations(translationKeyHyperlinks, ({ one }) => ({
+  translationKey: one(translationKeys, {
+    fields: [translationKeyHyperlinks.translationKeyId],
+    references: [translationKeys.id],
+  }),
+}));
+
+export const insertTranslationKeyHyperlinkSchema = createInsertSchema(translationKeyHyperlinks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTranslationKeyHyperlink = z.infer<typeof insertTranslationKeyHyperlinkSchema>;
+export type TranslationKeyHyperlink = typeof translationKeyHyperlinks.$inferSelect;
+
+// Translation Key Change History - audit log for key modifications
+export const translationKeyChangeHistory = pgTable("translation_key_change_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  translationKeyId: varchar("translation_key_id").notNull().references(() => translationKeys.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  action: varchar("action", { length: 50 }).notNull(),
+  field: varchar("field", { length: 100 }),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const translationKeyChangeHistoryRelations = relations(translationKeyChangeHistory, ({ one }) => ({
+  translationKey: one(translationKeys, {
+    fields: [translationKeyChangeHistory.translationKeyId],
+    references: [translationKeys.id],
+  }),
+  user: one(users, {
+    fields: [translationKeyChangeHistory.userId],
+    references: [users.id],
+  }),
+}));
+
+export const insertTranslationKeyChangeHistorySchema = createInsertSchema(translationKeyChangeHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTranslationKeyChangeHistory = z.infer<typeof insertTranslationKeyChangeHistorySchema>;
+export type TranslationKeyChangeHistory = typeof translationKeyChangeHistory.$inferSelect;
 
 // API Keys - for programmatic REST API access (CI/CD, CLI tools)
 export const apiKeys = pgTable("api_keys", {

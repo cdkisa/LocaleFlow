@@ -1,14 +1,21 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Check, ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -17,16 +24,23 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-
-const projectSchema = z.object({
-  name: z.string().min(1, "Project name is required").max(255),
-  description: z.string().optional(),
-});
-
-type ProjectFormData = z.infer<typeof projectSchema>;
+import { cn } from "@/lib/utils";
 
 interface Language {
   code: string;
@@ -34,14 +48,24 @@ interface Language {
 }
 
 export default function NewProject() {
+  const { t } = useTranslation("project");
+  const { t: tc } = useTranslation("common");
+
+  const projectSchema = z.object({
+    name: z.string().min(1, tc("validation.nameRequired")).max(255),
+    description: z.string().optional(),
+  });
+
+  type ProjectFormData = z.infer<typeof projectSchema>;
+
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [languages, setLanguages] = useState<Language[]>([
     { code: "en", name: "English" },
   ]);
-  const [newLangCode, setNewLangCode] = useState("");
-  const [newLangName, setNewLangName] = useState("");
+  const [languageComboboxOpen, setLanguageComboboxOpen] = useState(false);
+  const [languageSearch, setLanguageSearch] = useState("");
 
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
@@ -51,6 +75,43 @@ export default function NewProject() {
     },
   });
 
+  // Culture codes query for autocomplete
+  type CultureCode = { code: string; name: string };
+  const {
+    data: cultureCodes = [],
+    isLoading: isLoadingCultureCodes,
+    error: cultureCodesError,
+    refetch: refetchCultureCodes,
+  } = useQuery<CultureCode[]>({
+    queryKey: ["/api/culture-codes", languageSearch],
+    queryFn: async () => {
+      try {
+        const params = languageSearch
+          ? new URLSearchParams({ search: languageSearch })
+          : "";
+        const res = await apiRequest(
+          "GET",
+          `/api/culture-codes${params ? `?${params}` : ""}`
+        );
+        const data = await res.json();
+        if (!Array.isArray(data)) {
+          console.error("Culture codes API returned non-array:", data);
+          return [];
+        }
+        return data;
+      } catch (error) {
+        console.error("Error fetching culture codes:", error);
+        throw error;
+      }
+    },
+    enabled: true,
+  });
+
+  // Log errors for debugging
+  if (cultureCodesError) {
+    console.error("Culture codes query error:", cultureCodesError);
+  }
+
   const createProject = useMutation({
     mutationFn: async (data: ProjectFormData & { languages: Language[] }) => {
       const res = await apiRequest("POST", "/api/projects", data);
@@ -59,16 +120,16 @@ export default function NewProject() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
       toast({
-        title: "Success",
-        description: "Project created successfully",
+        title: tc("toast.success"),
+        description: tc("toast.success"),
       });
       setLocation(`/projects/${data.id}`);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -77,27 +138,24 @@ export default function NewProject() {
         return;
       }
       toast({
-        title: "Error",
+        title: tc("toast.error"),
         description: error.message || "Failed to create project",
         variant: "destructive",
       });
     },
   });
 
-  const addLanguage = () => {
-    if (newLangCode && newLangName) {
-      if (languages.find(l => l.code === newLangCode)) {
-        toast({
-          title: "Error",
-          description: "Language code already exists",
-          variant: "destructive",
-        });
-        return;
-      }
-      setLanguages([...languages, { code: newLangCode, name: newLangName }]);
-      setNewLangCode("");
-      setNewLangName("");
+  const addLanguage = (code: string, name: string) => {
+    if (languages.find((l) => l.code === code)) {
+      toast({
+        title: tc("toast.error"),
+        description: t("new.languageExists"),
+        variant: "destructive",
+      });
+      return;
     }
+    setLanguages([...languages, { code, name }]);
+    setLanguageSearch("");
   };
 
   const removeLanguage = (code: string) => {
@@ -107,8 +165,8 @@ export default function NewProject() {
   const onSubmit = (data: ProjectFormData) => {
     if (languages.length === 0) {
       toast({
-        title: "Error",
-        description: "At least one language is required",
+        title: tc("toast.error"),
+        description: t("new.atLeastOneLanguage"),
         variant: "destructive",
       });
       return;
@@ -119,9 +177,9 @@ export default function NewProject() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold mb-2">Create New Project</h1>
+        <h1 className="text-3xl font-semibold mb-2">{t("new.title")}</h1>
         <p className="text-muted-foreground">
-          Set up a new localization project with languages and team members
+          {t("new.subtitle")}
         </p>
       </div>
 
@@ -129,8 +187,10 @@ export default function NewProject() {
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Project Details</CardTitle>
-              <CardDescription>Basic information about your project</CardDescription>
+              <CardTitle>{t("new.projectDetails")}</CardTitle>
+              <CardDescription>
+                {t("new.projectDetailsDesc")}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField
@@ -138,10 +198,10 @@ export default function NewProject() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Project Name</FormLabel>
+                    <FormLabel>{tc("labels.projectName")}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="My App"
+                        placeholder={t("new.placeholder.name")}
                         {...field}
                         data-testid="input-project-name"
                       />
@@ -156,10 +216,10 @@ export default function NewProject() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description (Optional)</FormLabel>
+                    <FormLabel>{t("new.descriptionOptional")}</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Describe your project..."
+                        placeholder={t("new.placeholder.description")}
                         {...field}
                         data-testid="input-project-description"
                       />
@@ -173,8 +233,8 @@ export default function NewProject() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Languages</CardTitle>
-              <CardDescription>Add languages for your project</CardDescription>
+              <CardTitle>{t("new.languagesTitle")}</CardTitle>
+              <CardDescription>{t("new.languagesDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -201,28 +261,94 @@ export default function NewProject() {
                 ))}
               </div>
 
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Code (e.g., fr-CA)"
-                  value={newLangCode}
-                  onChange={(e) => setNewLangCode(e.target.value)}
-                  className="font-mono"
-                  data-testid="input-language-code"
-                />
-                <Input
-                  placeholder="Name (e.g., French Canadian)"
-                  value={newLangName}
-                  onChange={(e) => setNewLangName(e.target.value)}
-                  data-testid="input-language-name"
-                />
-                <Button
-                  type="button"
-                  onClick={addLanguage}
-                  variant="outline"
-                  data-testid="button-add-language"
+              <div className="space-y-2">
+                <Popover
+                  open={languageComboboxOpen}
+                  onOpenChange={(open) => {
+                    setLanguageComboboxOpen(open);
+                    if (open) {
+                      // Reset search when opening to show all languages
+                      setLanguageSearch("");
+                      // Refetch culture codes when opening
+                      refetchCultureCodes();
+                    }
+                  }}
                 >
-                  <Plus className="h-4 w-4" />
-                </Button>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={languageComboboxOpen}
+                      className="w-full justify-between"
+                      data-testid="button-language-combobox"
+                    >
+                      {t("new.selectLanguage")}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[400px] p-0" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder={t("new.searchLanguages")}
+                        value={languageSearch}
+                        onValueChange={setLanguageSearch}
+                        data-testid="input-language-search"
+                      />
+                      <CommandList>
+                        {isLoadingCultureCodes ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground">
+                            {t("new.loadingLanguages")}
+                          </div>
+                        ) : cultureCodesError ? (
+                          <div className="py-6 text-center text-sm text-destructive">
+                            {t("new.errorLoadingLanguages")}
+                          </div>
+                        ) : (
+                          <>
+                            <CommandEmpty>{t("new.noLanguageFound")}</CommandEmpty>
+                            <CommandGroup>
+                              {cultureCodes
+                                .filter(
+                                  (culture) =>
+                                    !languages.find(
+                                      (l) => l.code === culture.code
+                                    )
+                                )
+                                .map((culture) => (
+                                  <CommandItem
+                                    key={culture.code}
+                                    value={`${culture.name} ${culture.code}`}
+                                    onSelect={() => {
+                                      addLanguage(culture.code, culture.name);
+                                      setLanguageComboboxOpen(false);
+                                      setLanguageSearch("");
+                                    }}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      addLanguage(culture.code, culture.name);
+                                      setLanguageComboboxOpen(false);
+                                      setLanguageSearch("");
+                                    }}
+                                    data-testid={`option-language-${culture.code}`}
+                                  >
+                                    <Check className="mr-2 h-4 w-4 opacity-0" />
+                                    <div className="flex flex-col">
+                                      <span>{culture.name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {culture.code}
+                                      </span>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </>
+                        )}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </CardContent>
           </Card>
@@ -233,7 +359,7 @@ export default function NewProject() {
               disabled={createProject.isPending}
               data-testid="button-create-project-submit"
             >
-              {createProject.isPending ? "Creating..." : "Create Project"}
+              {createProject.isPending ? tc("actions.creating") : tc("actions.createProject")}
             </Button>
             <Button
               type="button"
@@ -241,7 +367,7 @@ export default function NewProject() {
               onClick={() => setLocation("/")}
               data-testid="button-cancel"
             >
-              Cancel
+              {tc("actions.cancel")}
             </Button>
           </div>
         </form>

@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { z } from "zod";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,18 +21,24 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 
-const keySchema = z.object({
-  key: z.string().min(1, "Key is required").max(500),
-  description: z.string().optional(),
-});
+type KeyFormData = z.infer<ReturnType<typeof makeKeySchema>>;
 
-type KeyFormData = z.infer<typeof keySchema>;
+function makeKeySchema(tc: (key: string) => string) {
+  return z.object({
+    key: z.string().min(1, tc("validation.keyRequired")).max(500),
+    description: z.string().optional(),
+  });
+}
 
 export default function NewKey() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { t } = useTranslation("project");
+  const { t: tc } = useTranslation("common");
+
+  const keySchema = makeKeySchema(tc);
 
   const form = useForm<KeyFormData>({
     resolver: zodResolver(keySchema),
@@ -51,16 +58,16 @@ export default function NewKey() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id, "keys"] });
       toast({
-        title: "Success",
-        description: "Translation key created",
+        title: tc("toast.success"),
+        description: t("toast.keyCreated"),
       });
       setLocation(`/projects/${id}`);
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: tc("toast.unauthorized"),
+          description: tc("toast.unauthorizedDesc"),
           variant: "destructive",
         });
         setTimeout(() => {
@@ -69,8 +76,8 @@ export default function NewKey() {
         return;
       }
       toast({
-        title: "Error",
-        description: error.message || "Failed to create key",
+        title: tc("toast.error"),
+        description: error.message || t("toast.failedCreateKey"),
         variant: "destructive",
       });
     },
@@ -79,9 +86,9 @@ export default function NewKey() {
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold mb-2">Add Translation Key</h1>
+        <h1 className="text-3xl font-semibold mb-2">{t("newKey.title")}</h1>
         <p className="text-muted-foreground">
-          Create a new key that can be translated into all project languages
+          {t("newKey.subtitle")}
         </p>
       </div>
 
@@ -89,8 +96,8 @@ export default function NewKey() {
         <form onSubmit={form.handleSubmit((data) => createKey.mutate(data))} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Key Details</CardTitle>
-              <CardDescription>Define the translation key and provide context</CardDescription>
+              <CardTitle>{t("newKey.keyDetails")}</CardTitle>
+              <CardDescription>{t("newKey.keyDetailsDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField
@@ -98,17 +105,17 @@ export default function NewKey() {
                 name="key"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Key</FormLabel>
+                    <FormLabel>{tc("labels.key")}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="home.welcome.title"
+                        placeholder={t("newKey.keyPlaceholder")}
                         className="font-mono"
                         {...field}
                         data-testid="input-key"
                       />
                     </FormControl>
                     <FormDescription>
-                      Use dot notation for namespacing (e.g., home.welcome.title)
+                      {t("newKey.keyFormatHelp")}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -120,16 +127,16 @@ export default function NewKey() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Description (Optional)</FormLabel>
+                    <FormLabel>{t("newKey.descriptionOptional")}</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Provide context for translators..."
+                        placeholder={t("newKey.descriptionPlaceholder")}
                         {...field}
                         data-testid="input-key-description"
                       />
                     </FormControl>
                     <FormDescription>
-                      Help translators understand the context and usage
+                      {t("newKey.descriptionHelp")}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -144,7 +151,7 @@ export default function NewKey() {
               disabled={createKey.isPending}
               data-testid="button-create-key"
             >
-              {createKey.isPending ? "Creating..." : "Create Key"}
+              {createKey.isPending ? tc("actions.creating") : t("newKey.createKey")}
             </Button>
             <Button
               type="button"
@@ -152,7 +159,7 @@ export default function NewKey() {
               onClick={() => setLocation(`/projects/${id}`)}
               data-testid="button-cancel"
             >
-              Cancel
+              {tc("actions.cancel")}
             </Button>
           </div>
         </form>

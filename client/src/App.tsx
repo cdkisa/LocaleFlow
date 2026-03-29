@@ -12,7 +12,7 @@ import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import NewProject from "@/pages/new-project";
-import ProjectDetail from "@/pages/project-detail";
+import ProjectDetail from "@/pages/project-dashboard";
 import TranslationEditor from "@/pages/translation-editor";
 import NewKey from "@/pages/new-key";
 import EditKey from "@/pages/edit-key";
@@ -31,7 +31,6 @@ function Router() {
       ) : (
         <>
           <Route path="/" component={Dashboard} />
-          <Route path="/projects" component={Dashboard} />
           <Route path="/projects/new" component={NewProject} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/projects/:id/editor" component={TranslationEditor} />
